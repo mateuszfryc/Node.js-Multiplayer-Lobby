@@ -1,0 +1,3 @@
+# node js ignores
+node_modules
+npm-debug.log
