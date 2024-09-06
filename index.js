@@ -4,9 +4,10 @@ const { Server } = require('colyseus');
 const { Room } = require('colyseus');
 
 // Define a basic room handler
-class MyRoom extends Room {
+class CustomRoom extends Room {
   onCreate(options) {
     console.log('Room created!');
+    this.setSeatReservationTime(10000);
   }
 
   onJoin(client, options) {
@@ -29,7 +30,7 @@ const gameServer = new Server({
 });
 
 // Register the room
-gameServer.define('my_room', MyRoom);
+gameServer.define('custom_room', CustomRoom);
 
 // Start listening for requests
 const port = process.env.PORT || 3000;
