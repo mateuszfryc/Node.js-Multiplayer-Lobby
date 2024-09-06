@@ -5,6 +5,15 @@ const { Room } = require('colyseus');
 
 // Define a basic room handler
 class CustomRoom extends Room {
+  onMessage(client, message) {
+    console.log('Message received from', client.sessionId, ':', message);
+
+    if (message.action === 'join') {
+      console.log(client.sessionId, 'is attempting to join.');
+      // Handle other game logic here for joining.
+    }
+  }
+
   onCreate(options) {
     console.log('Room created!');
     this.setSeatReservationTime(10000);
