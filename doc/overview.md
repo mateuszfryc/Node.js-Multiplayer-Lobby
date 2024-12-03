@@ -1,0 +1,7 @@
+- on Heroku we host very small server in node.js that needs to connect testers to test multiplayer game made with Unreal Engine
+- when the player creates new game it should send info to the server with the new game data
+- what should be the new game data, taking that for now the players will use listen server?
+- players who look for available games need to be able to retrieve the list of current games from the server
+- once the player chooses the game the server should provide the player data required to join the game
+- taking that the game is based on UE listen server, how the entire flow should look like?
+- it needs to be simple
