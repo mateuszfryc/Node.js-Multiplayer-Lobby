@@ -1,29 +1,29 @@
-const express = require('express');
-const rateLimit = require('express-rate-limit');
-const helmet = require('helmet');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const bcrypt = require('bcrypt');
-const { Pool } = require('pg');
-const jwt = require('jsonwebtoken');
+import bcrypt from 'bcrypt';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
+import pg from 'pg';
 
 let mode = null;
 if (process.env.NODE_ENV == 'production') {
-  require('dotenv').config({ path: '.env.prod.db' });
-  require('dotenv').config({ path: '.env.prod.auth' });
+  dotenv.config({ path: '.env.prod.db' });
+  dotenv.config({ path: '.env.prod.auth' });
   mode = 'production';
 }
 if (process.env.NODE_ENV == 'development') {
-  require('dotenv').config({ path: '.env.db' });
-  require('dotenv').config({ path: '.env.auth' });
+  dotenv.config({ path: '.env.db' });
+  dotenv.config({ path: '.env.auth' });
   mode = 'development';
 }
-
 if (mode === null) {
   throw new Error('Error: NODE_ENV not set');
 }
 
-is_prod = mode === 'production';
+const is_prod = mode === 'production';
 
 console.log(`Running in "${mode}" mode`);
 
@@ -52,15 +52,17 @@ app.use(limiter);
 app.use(bodyParser.json());
 
 // PostgreSQL connection pool
-const pool = new Pool({
+const pool = new pg.Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT || 5432,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: is_prod
+    ? {
+        rejectUnauthorized: false,
+      }
+    : false,
 });
 
 const authenticateToken = (req, res, next) => {
