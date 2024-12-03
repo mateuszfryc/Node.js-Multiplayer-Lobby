@@ -6,7 +6,24 @@ const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
+
+let mode = null;
+if (process.env.NODE_ENV == 'prod') {
+  require('dotenv').config({ path: '.env.prod.db' });
+  require('dotenv').config({ path: '.env.prod.auth' });
+  mode = 'production';
+}
+if (process.env.NODE_ENV == 'dev') {
+  require('dotenv').config({ path: '.env.db' });
+  require('dotenv').config({ path: '.env.auth' });
+  mode = 'development';
+}
+
+if (mode === null) {
+  throw new Error('Error: NODE_ENV not set');
+}
+
+console.log(`Running in "${mode}" mode`);
 
 const app = express();
 // Store revoked JWT tokens
