@@ -8,12 +8,12 @@ const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 
 let mode = null;
-if (process.env.NODE_ENV == 'prod') {
+if (process.env.NODE_ENV == 'production') {
   require('dotenv').config({ path: '.env.prod.db' });
   require('dotenv').config({ path: '.env.prod.auth' });
   mode = 'production';
 }
-if (process.env.NODE_ENV == 'dev') {
+if (process.env.NODE_ENV == 'development') {
   require('dotenv').config({ path: '.env.db' });
   require('dotenv').config({ path: '.env.auth' });
   mode = 'development';
@@ -22,6 +22,8 @@ if (process.env.NODE_ENV == 'dev') {
 if (mode === null) {
   throw new Error('Error: NODE_ENV not set');
 }
+
+is_prod = mode === 'production';
 
 console.log(`Running in "${mode}" mode`);
 
@@ -34,6 +36,10 @@ app.use(helmet());
 
 // Enable CORS for trusted origins
 app.use(cors({ origin: 'https://yourgame.com' }));
+
+if (is_prod) {
+  app.set('trust proxy', 1); // Trust the first proxy
+}
 
 // Apply rate limiting
 const limiter = rateLimit({
@@ -77,6 +83,10 @@ const authenticateToken = (req, res, next) => {
     return res.status(403).json({ error: err });
   }
 };
+
+app.get('/', (req, res) => {
+  res.status(200).send('Ready.');
+});
 
 app.get('/test_auth', authenticateToken, (req, res) => {
   res.status(200).json({
