@@ -2,14 +2,14 @@
   "name": "matchmaking",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.js",
   "directories": {
     "doc": "doc"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "cross-env NODE_ENV=development node index.js",
-    "prod": "cross-env NODE_ENV=production node index.js"
+    "dev": "cross-env NODE_ENV=development node src/index.js",
+    "prod": "cross-env NODE_ENV=production node src/index.js"
   },
   "author": "",
   "license": "ISC",
@@ -24,6 +24,7 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "validator": "^13.12.0"
   }
 }
