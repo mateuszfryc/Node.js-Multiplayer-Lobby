@@ -1,19 +1,19 @@
 import jwt from 'jsonwebtoken';
-import { loggedUsers } from '../state/auth_state.js';
+import { tokens_denylist } from '../state/auth_state.js';
 
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  const err = 'Token is invalid.';
+  const err = { error: 'Token is invalid.' };
 
   if (!token) {
-    return res.status(401).json({ error: err });
+    return res.status(401).json(err);
   }
 
   // Check if the token is in the denylist
-  if (!loggedUsers.has(token)) {
-    return res.status(403).json({ error: err });
+  if (tokens_denylist.has(token)) {
+    return res.status(403).json(err);
   }
 
   try {
@@ -21,6 +21,7 @@ export const authenticateToken = (req, res, next) => {
     req.user = user;
     next();
   } catch (err) {
-    return res.status(403).json({ error: err });
+    console.error(`ERROR: ${err}`);
+    return res.status(403).json(err);
   }
 };

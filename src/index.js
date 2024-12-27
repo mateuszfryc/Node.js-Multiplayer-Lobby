@@ -23,7 +23,9 @@ if (isProd()) {
   app.set('trust proxy', 1);
 }
 
-app.get('/', (req, res) => res.status(200).send('Ready.'));
+app.get('/', (req, res) => {
+  res.status(200).send('Ready.');
+});
 app.use('/api', auth_router);
 
 app.listen(PORT, () => {

@@ -1,1 +1,1 @@
-export const loggedUsers = new Map();
+export const tokens_denylist = new Set();

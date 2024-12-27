@@ -2,15 +2,15 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import validator from 'validator';
 
-import { isDev } from '../../../utils/env.js';
+import { getJwtTimoutSeconds, isDev } from '../../../utils/env.js';
 import { db } from '../../persistence/postgresql/database_config.js';
-import { loggedUsers } from '../state/auth_state.js';
+import { tokens_denylist } from '../state/auth_state.js';
 
 // Route to handle login requests
 export const login = async (req, res) => {
   const { email, password } = req.body;
-  const error = 'Invalid email or password';
-  const prfx = 'User Log In:';
+  const error = { error: 'Invalid email or password' };
+  const prfx = 'User Login:';
 
   try {
     // check if either is string
@@ -18,12 +18,12 @@ export const login = async (req, res) => {
       console.log(
         `${prfx} Email is not a string: ${email} of type ${typeof email}`
       );
-      return res.status(400).json({ error });
+      return res.status(400).json(error);
     }
 
     if (!validator.isEmail(email)) {
       console.log(`${prfx} Invalid email format: ${email}`);
-      return res.status(400).json({ error });
+      return res.status(400).json(error);
     }
 
     const query = 'SELECT * FROM users WHERE email = $1';
@@ -31,7 +31,7 @@ export const login = async (req, res) => {
 
     if (result.rows.length === 0) {
       console.log(`${prfx} Invalid email: ${email}`);
-      return res.status(401).json({ error });
+      return res.status(401).json(error);
     }
 
     const user = result.rows[0];
@@ -39,36 +39,37 @@ export const login = async (req, res) => {
       console.log(
         `${prfx} Invalid user databse entry: ${user} of type ${typeof user}`
       );
-      return res.status(401).json({ error });
+      return res.status(401).json(error);
     }
 
-    if (loggedUsers.has(user.id)) {
+    if (user.timeout_date > 0 && user.timeout_date > Date.now()) {
       console.log(
         `${prfx} User already logged in attempted to log in again: ${user.id}`
       );
-      return res.status(401).json({ error });
+      return res.status(401).json(error);
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       console.log(`${prfx} Invalid password: ${password}`);
-      return res.status(401).json({ error });
+      return res.status(401).json(error);
     }
 
-    console.log(
-      `${prfx} User logged in, id: ${user.id}, display_name: ${user.display_name}`
-    );
+    const timeout = getJwtTimoutSeconds();
 
     // Generate a JWT token
     const token = jwt.sign(
       { id: user.id, display_name: user.display_name }, // Payload
       process.env.JWT_SECRET, // Secret key
-      { expiresIn: process.env.JWT_EXPIRATION } // Token expiration
+      { expiresIn: timeout } // Token expiration
     );
+    // !!! this needs to be done with db().query, make the db class with methods for each operation!!!
+    user.timeout_date = new Date(Date.now() + timeout);
 
-    loggedUsers.set(token, user.id);
-    loggedUsers.set(user.id, token);
+    console.log(
+      `${prfx} User logged in, id: ${user.id}, display_name: ${user.display_name}, JWT expires in: ${timeout} seconds, timeout_date: ${user.timeout_date}`
+    );
 
     res.status(200).json({
       message: 'Login successful',
@@ -82,16 +83,9 @@ export const login = async (req, res) => {
 
 export const logout = (req, res) => {
   const token = req.headers['authorization'].split(' ')[1];
-  const prfx = 'User Log Out:';
-  const user_id = loggedUsers.get(token);
 
-  if (!user_id) {
-    console.log(`${prfx} User that is not logged in attempted to log out`);
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  loggedUsers.delete(user_id);
-  loggedUsers.delete(token);
+  // Add the token to the denylist
+  tokens_denylist.add(token);
 
   res.status(200).json({ message: 'Logged out successfully' });
 };
