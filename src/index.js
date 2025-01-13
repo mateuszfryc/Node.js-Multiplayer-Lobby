@@ -3,14 +3,18 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 
-import { auth_router } from './modules/auth/routes/auth_routes.js';
-import { cors_config } from './modules/global/config/cors.js';
-import { loadEnv } from './modules/global/config/dotenv.js';
-import { limiter } from './modules/global/config/limiter.js';
-import { isProd } from './utils/env.js';
+import { auth_router } from '#auth/routes/auth_routes.js';
+import { cors_config } from '#config/cors.js';
+import { setupDb } from '#config/database.js';
+import { loadEnv } from '#config/dotenv.js';
+import { limiter } from '#config/limiter.js';
+import { rooms_router } from '#rooms/routes/rooms_routes.js';
+import { isProd } from '#utils/env.js';
 
 const { mode, PORT } = loadEnv();
 console.log(`Running in "${mode}" mode`);
+
+await setupDb();
 
 const app = express();
 app.use(helmet());
@@ -26,8 +30,8 @@ if (isProd()) {
 app.get('/', (req, res) => {
   res.status(200).send('Ready.');
 });
-app.use('/api', auth_router);
+[auth_router, rooms_router].forEach((router) => app.use('/api', router));
 
 app.listen(PORT, () => {
-  console.log('Server is running on port 3000');
+  console.log(`Server is running on port: ${PORT}`);
 });

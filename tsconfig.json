@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "module": "es2022",
+    "target": "es2022",
+    "isolatedModules": true,
+    "checkJs": true,
+    "paths": {
+      "#/*": ["src/*"],
+      "#utils/*": ["src/utils/*"],
+      "#config/*": ["src/config/*"],
+      "#auth/*": ["src/modules/auth/*"],
+      "#rooms/*": ["src/modules/rooms/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}

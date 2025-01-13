@@ -2,9 +2,12 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import validator from 'validator';
 
-import { getJwtTimoutSeconds, isDev } from '../../../utils/env.js';
-import { db } from '../../persistence/postgresql/database_config.js';
-import { tokens_denylist } from '../state/auth_state.js';
+import {
+  getUserByEmail,
+  updateUserTimeout,
+} from '#auth/actions/auth_actions.js';
+import { tokens_denylist } from '#auth/state/auth_state.js';
+import { getJwtTimoutSeconds, isDev } from '#utils/env.js';
 
 // Route to handle login requests
 export const login = async (req, res) => {
@@ -26,15 +29,7 @@ export const login = async (req, res) => {
       return res.status(400).json(error);
     }
 
-    const query = 'SELECT * FROM users WHERE email = $1';
-    const result = await db().query(query, [email]);
-
-    if (result.rows.length === 0) {
-      console.log(`${prfx} Invalid email: ${email}`);
-      return res.status(401).json(error);
-    }
-
-    const user = result.rows[0];
+    const user = getUserByEmail(email);
     if (!user) {
       console.log(
         `${prfx} Invalid user databse entry: ${user} of type ${typeof user}`
@@ -64,8 +59,9 @@ export const login = async (req, res) => {
       process.env.JWT_SECRET, // Secret key
       { expiresIn: timeout } // Token expiration
     );
-    // !!! this needs to be done with db().query, make the db class with methods for each operation!!!
-    user.timeout_date = new Date(Date.now() + timeout);
+
+    // Update the user's timeout date in the database
+    await updateUserTimeout(user.id, Date.now() + timeout);
 
     console.log(
       `${prfx} User logged in, id: ${user.id}, display_name: ${user.display_name}, JWT expires in: ${timeout} seconds, timeout_date: ${user.timeout_date}`

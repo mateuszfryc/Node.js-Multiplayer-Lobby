@@ -1,7 +1,7 @@
 import express from 'express';
 
-import { login, logout, test_auth } from '../controllers/auth_controllers.js';
-import { authenticateToken } from '../middleware/auth_token.js';
+import { authenticateToken } from '#auth/middleware/auth_token.js';
+import { login, logout, test_auth } from '#auth/requests/auth_requests.js';
 
 export const auth_router = express.Router();
 

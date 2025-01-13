@@ -1,5 +1,5 @@
+import { tokens_denylist } from '#auth/state/auth_state.js';
 import jwt from 'jsonwebtoken';
-import { tokens_denylist } from '../state/auth_state.js';
 
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
