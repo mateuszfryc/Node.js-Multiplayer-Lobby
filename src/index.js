@@ -17,6 +17,7 @@ console.log(`Running in "${mode}" mode`);
 await setupDb();
 
 const app = express();
+app.use(express.json({ strict: true }));
 app.use(helmet());
 app.use(cors(cors_config));
 app.use(bodyParser.json());
@@ -28,7 +29,7 @@ if (isProd()) {
 }
 
 app.get('/', (req, res) => {
-  res.status(200).send('Ready.');
+  res.status(200).send('Lobby online.');
 });
 [auth_router, rooms_router].forEach((router) => app.use('/api', router));
 

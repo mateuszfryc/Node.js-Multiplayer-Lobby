@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
-    "module": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "NodeNext",
     "target": "es2022",
     "isolatedModules": true,
     "checkJs": true,

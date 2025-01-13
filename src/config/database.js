@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import Sequelize from 'sequelize';
+import * as Sequelize from 'sequelize';
 import { fileURLToPath } from 'url';
+import { data } from './seed.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,14 +51,14 @@ const loadModels = async (baseDir, client) => {
 const seedData = async (models) => {
   for (const model of models) {
     const modelName = model.name; // Get the model's name
-    const data = seedData[modelName]; // Fetch the corresponding seed data
+    const modelSeed = data[modelName]; // Fetch the corresponding seed data
 
-    if (data) {
+    if (modelSeed) {
       // Check if data already exists
       const existingData = await model.findOne();
       if (!existingData) {
         // Seed the data
-        await model.bulkCreate(data);
+        await model.bulkCreate(modelSeed);
         console.log(`Seeded data for ${modelName}`);
       } else {
         console.log(`Data already exists for ${modelName}`);
@@ -71,7 +72,7 @@ const seedData = async (models) => {
 export const setupDb = async () => {
   if (db.client) return;
 
-  const client = new Sequelize(
+  const client = new Sequelize.Sequelize(
     process.env.DB_NAME,
     process.env.DB_USER,
     process.env.DB_PASSWORD,
@@ -87,6 +88,7 @@ export const setupDb = async () => {
     db.client = client;
     await client.sync({ alter: true });
     console.log('Database connection has been established successfully.');
+    seedData(Object.values(client.models));
   } catch (error) {
     console.error('Unable to connect to the database:', error);
   }
