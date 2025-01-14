@@ -1,48 +1,50 @@
 // import { loadEnv } from '#utils/env.js';
-import dotenv from 'dotenv';
 
-export const loadEnv = () => {
-  let mode = null;
-  if (process.env.NODE_ENV == 'production') {
+const loadEnv = (envDefinitions) => {
+  const envs = new Map();
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (isProd) {
     dotenv.config({ path: '.env.prod.db' });
     dotenv.config({ path: '.env.prod.auth' });
-    mode = 'production';
-  }
-  if (process.env.NODE_ENV == 'development') {
+  } //
+  else {
     dotenv.config({ path: '.env.db' });
     dotenv.config({ path: '.env.auth' });
-    mode = 'development';
-  }
-  if (mode === null) {
-    throw new Error('Error: NODE_ENV not set');
   }
 
-  const PORT = process.env.PORT ?? 3000;
-  const isProd = mode === 'production';
+  const parseBoolean = (value) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    throw new Error(
+      `Invalid boolean value: "${value}". Expected "true" or "false".`
+    );
+  };
 
-  // List of required variables and any constraints we want to check
-  const requiredVars = [
-    { key: 'JWT_SECRET', minLength: 32 },
-    { key: 'JWT_REFRESH_SECRET', minLength: 32 },
-    // For SODIUM_KEY, it must be a valid base64-encoded 32-byte key
-    { key: 'SODIUM_KEY', base64Length: 32 },
-  ];
-
-  for (const { key, minLength, base64Length } of requiredVars) {
+  // Validate environment variables
+  for (const {
+    key,
+    minLength,
+    base64Length,
+    filePath,
+    type,
+  } of envDefinitions) {
     const value = process.env[key];
+
+    // Check if the variable is defined
     if (!value) {
       throw new Error(`Missing required environment variable: ${key}`);
     }
 
-    // If we have a plain minimum-length requirement (e.g., for JWT secrets)
+    // Check minimum length
     if (minLength && value.length < minLength) {
       throw new Error(
         `Environment variable "${key}" must be at least ${minLength} characters long (current length: ${value.length}).`
       );
     }
 
-    // If we require a base64-encoded 32-byte key (e.g., for SODIUM_KEY)
-    if (base64Length) {
+    // Check base64-encoded length
+    if (base64Length && value) {
       const raw = Buffer.from(value, 'base64');
       if (raw.length !== base64Length) {
         throw new Error(
@@ -50,35 +52,70 @@ export const loadEnv = () => {
         );
       }
     }
-  }
 
-  if (isProd) {
-    const dbVars = ['DB_USER', 'DB_PASS', 'DB_NAME', 'DB_HOST', 'DB_PORT'];
-    for (const key of dbVars) {
-      if (!process.env[key]) {
-        throw new Error(`Missing required environment variable: ${key}`);
+    // Check if the file exists for file paths
+    if (filePath && value) {
+      try {
+        fs.accessSync(value, fs.constants.R_OK);
+      } catch {
+        throw new Error(
+          `File specified in environment variable "${key}" does not exist or is not readable: ${value}`
+        );
       }
     }
+
+    switch (type) {
+      case 'bool':
+        envs.set(key, parseBoolean(value));
+        break;
+      case 'number':
+        const numericValue = Number(value);
+        if (isNaN(numericValue)) {
+          throw new Error(
+            `Environment variable "${key}" must be a valid number.`
+          );
+        }
+        envs.set(key, numericValue);
+        break;
+      default:
+        envs.set(key, value);
+    }
+
+    envs.set(key, value);
   }
 
-  let sslOptions;
+  console.log('All required environment variables are present and valid.');
+
+  return [envs, isProd];
+};
+
+// Load environment variables and check constraints, crash early if any envs missing
+const [ENVS, isProd] = loadEnv([
+  { key: 'PORT', type: 'number' },
+  { key: 'JWT_SECRET', minLength: 32 },
+  { key: 'JWT_REFRESH_SECRET', minLength: 32 },
+  { key: 'SODIUM_KEY', base64Length: 32 },
+  { key: 'DB_USER' },
+  { key: 'DB_PASS' },
+  { key: 'DB_NAME' },
+  { key: 'DB_HOST' },
+  { key: 'DB_PORT', type: 'number' },
+  { key: 'SSL_KEY_PATH', filePath: true },
+  { key: 'SSL_CERT_PATH', filePath: true },
+  { key: 'USE_SSL', type: 'bool' },
+]);
+
+let sslOptions;
+if (ENVS.USE_SSL === 'true') {
   try {
     sslOptions = {
       key: fs.readFileSync(process.env.SSL_KEY_PATH),
       cert: fs.readFileSync(process.env.SSL_CERT_PATH),
     };
   } catch (err) {
-    throw new Error('Failed to load SSL certificates:', err.message);
+    throw new Error(`Failed to load SSL certificates: ${err.message}`);
   }
-
-  // If everything passed, no errors are thrown, so we’re good
-  console.log('All required environment variables are present and valid.');
-
-  return [PORT, isProd, sslOptions /* mode */];
-};
-
-// Load environment variables and check constraints, crash early if any envs missing
-const [PORT, isProd, sslOptions] = loadEnv();
+}
 
 import bcrypt from 'bcrypt';
 import dayjs from 'dayjs';
@@ -996,7 +1033,7 @@ io.on('connection', (socket) => {
 // ----------------------------------------
 // HTTP / HTTPS Server
 // ----------------------------------------
-if (isProd) {
+if (isProd && sslOptions) {
   const options = {
     key: fs.readFileSync(sslOptions.SSL_KEY_PATH ?? ''),
     cert: fs.readFileSync(sslOptions.SSL_CERT_PATH ?? ''),

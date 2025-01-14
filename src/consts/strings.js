@@ -1,9 +1,0 @@
-export const USER_CHARS = /^[a-zA-Z0-9_]*$/;
-export const USER_MIN_LENGTH = 3;
-export const USER_MAX_LENGTH = 14;
-export const PASS_MIN_LENGTH = 8;
-export const PASS_MAX_LENGTH = 32;
-export const ROOM_NAME_MIN_LENGTH = 3;
-export const ROOM_NAME_MAX_LENGTH = 32;
-export const ROOM_PASS_MIN_LENGTH = 8;
-export const ROOM_PASS_MAX_LENGTH = 32;
