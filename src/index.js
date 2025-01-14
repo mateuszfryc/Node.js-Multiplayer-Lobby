@@ -1,7 +1,7 @@
-// import { loadEnv } from '#utils/env.js';
+import dotenv from 'dotenv';
 
 const loadEnv = (envDefinitions) => {
-  const envs = new Map();
+  const envs = {};
   const isProd = process.env.NODE_ENV === 'production';
 
   if (isProd) {
@@ -21,7 +21,6 @@ const loadEnv = (envDefinitions) => {
     );
   };
 
-  // Validate environment variables
   for (const {
     key,
     minLength,
@@ -31,19 +30,16 @@ const loadEnv = (envDefinitions) => {
   } of envDefinitions) {
     const value = process.env[key];
 
-    // Check if the variable is defined
     if (!value) {
       throw new Error(`Missing required environment variable: ${key}`);
     }
 
-    // Check minimum length
     if (minLength && value.length < minLength) {
       throw new Error(
         `Environment variable "${key}" must be at least ${minLength} characters long (current length: ${value.length}).`
       );
     }
 
-    // Check base64-encoded length
     if (base64Length && value) {
       const raw = Buffer.from(value, 'base64');
       if (raw.length !== base64Length) {
@@ -53,7 +49,6 @@ const loadEnv = (envDefinitions) => {
       }
     }
 
-    // Check if the file exists for file paths
     if (filePath && value) {
       try {
         fs.accessSync(value, fs.constants.R_OK);
@@ -66,7 +61,7 @@ const loadEnv = (envDefinitions) => {
 
     switch (type) {
       case 'bool':
-        envs.set(key, parseBoolean(value));
+        envs[key] = parseBoolean(value);
         break;
       case 'number':
         const numericValue = Number(value);
@@ -75,13 +70,13 @@ const loadEnv = (envDefinitions) => {
             `Environment variable "${key}" must be a valid number.`
           );
         }
-        envs.set(key, numericValue);
+        envs[key] = numericValue;
         break;
       default:
-        envs.set(key, value);
-    }
+        envs[key] = value;
 
-    envs.set(key, value);
+      // console.log(`Loaded environment variable: ${key}, value: ${value}`);
+    }
   }
 
   console.log('All required environment variables are present and valid.');
@@ -89,20 +84,23 @@ const loadEnv = (envDefinitions) => {
   return [envs, isProd];
 };
 
-// Load environment variables and check constraints, crash early if any envs missing
 const [ENVS, isProd] = loadEnv([
-  { key: 'PORT', type: 'number' },
+  { key: 'PORT' /*, type: 'number' */ },
   { key: 'JWT_SECRET', minLength: 32 },
   { key: 'JWT_REFRESH_SECRET', minLength: 32 },
   { key: 'SODIUM_KEY', base64Length: 32 },
   { key: 'DB_USER' },
-  { key: 'DB_PASS' },
+  { key: 'DB_PASSWORD' },
   { key: 'DB_NAME' },
   { key: 'DB_HOST' },
   { key: 'DB_PORT', type: 'number' },
-  { key: 'SSL_KEY_PATH', filePath: true },
-  { key: 'SSL_CERT_PATH', filePath: true },
+  { key: 'SSL_KEY_PATH' /*, filePath: true */ },
+  { key: 'SSL_CERT_PATH' /*, filePath: true */ },
   { key: 'USE_SSL', type: 'bool' },
+  { key: 'SMTP_HOST' },
+  { key: 'FROM_EMAIL' },
+  { key: 'SMTP_USER' },
+  { key: 'SMTP_PASS' },
 ]);
 
 let sslOptions;
@@ -129,6 +127,7 @@ import https from 'https';
 import jwt from 'jsonwebtoken';
 import * as sodium from 'libsodium-wrappers';
 import net from 'net';
+import nodemailer from 'nodemailer';
 import { DataTypes, Sequelize } from 'sequelize';
 import { Server as SocketIOServer } from 'socket.io';
 import winston from 'winston';
@@ -185,7 +184,9 @@ const logger = winston.createLogger({
   transports: [new winston.transports.Console(), logTransport],
 });
 
+// ----------------------------------------
 // Some constants / regexes
+// ----------------------------------------
 const USER_CHARS = /^[A-Za-z0-9!@#$%^&*\+\-\?,]+$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX =
@@ -203,7 +204,7 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST, // e.g. '127.0.0.1'
     dialect: 'postgres',
     protocol: 'postgres',
-    logging: !isProd, // pass function if you want to log queries
+    logging: isProd ? false : console.log, // pass function if you want to log queries
     dialectOptions: {
       ssl: {
         require: true,
@@ -460,6 +461,16 @@ async function authenticateToken(req, res, next) {
 // Routes
 // ----------------------------------------
 
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST, // e.g. 'smtp.gmail.com'
+  port: parseInt(process.env.SMTP_PORT || '587', 10),
+  secure: false, // true if port is 465, otherwise false
+  auth: {
+    user: ENVS.SMTP_USER, // email address
+    pass: ENVS.SMTP_PASS,
+  },
+});
+
 // Admin route: create a new user
 app.post('/api_v1/join', authenticateToken, async (req, res) => {
   try {
@@ -507,6 +518,26 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
       expires_at: exp,
     });
 
+    try {
+      const verificationLink = `${isProd ? 'https' : 'http'}://${
+        req.headers.host
+      }/api_v1/confirm/${token}`;
+
+      await transporter.sendMail({
+        from: ENVS.FROM_EMAIL,
+        to: user_name,
+        subject: 'Please Confirm Your Email',
+        text: `Hello! Confirm your email by visiting: ${verificationLink}`,
+        html: `
+          <p>Hello!</p>
+          <p>Please confirm your email by clicking the link below:</p>
+          <p><a href="${verificationLink}">${verificationLink}</a></p>
+        `,
+      });
+    } catch (emailError) {
+      logger.error('Failed to send verification email:', emailError);
+    }
+
     return jsonRes(res, 'User created', '', {}, 201);
   } catch (e) {
     logger.error(e);
@@ -545,7 +576,7 @@ const loginLimiter = rateLimit({
 const loginSpeedLimiter = slowDown({
   windowMs: 1 * 60 * 1000, // 1 minute
   delayAfter: 5, // allow 5 requests before introducing delay
-  delayMs: 1000, // add 1 second delay per request above 5
+  delayMs: () => 1000, // fixed delay of 1 second per request after limit
   maxDelayMs: 10 * 1000, // cap delay at 10 seconds
 });
 
@@ -1033,16 +1064,17 @@ io.on('connection', (socket) => {
 // ----------------------------------------
 // HTTP / HTTPS Server
 // ----------------------------------------
+const port = ENVS.PORT;
 if (isProd && sslOptions) {
   const options = {
     key: fs.readFileSync(sslOptions.SSL_KEY_PATH ?? ''),
     cert: fs.readFileSync(sslOptions.SSL_CERT_PATH ?? ''),
   };
-  https.createServer(options, app).listen(PORT, () => {
-    logger.info('HTTPS server on ' + PORT);
+  https.createServer(options, app).listen(port, () => {
+    logger.info('HTTPS server on ' + port);
   });
 } else {
-  httpServer.listen(PORT, () => {
-    logger.info('HTTP server on ' + PORT);
+  httpServer.listen(port, () => {
+    logger.info('HTTP server on ' + port);
   });
 }
