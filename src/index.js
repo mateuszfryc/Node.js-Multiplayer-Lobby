@@ -99,6 +99,7 @@ import 'winston-daily-rotate-file';
 
 const app = express();
 app.use(express.json({ strict: true }));
+
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -116,6 +117,7 @@ app.use(
     noSniff: true,
   })
 );
+
 if (isProd) {
   app.set('trust proxy', 1);
   app.use((req, res, next) => {
@@ -350,15 +352,14 @@ function validatePort(port) {
   // Attempt to parse as integer
   const parsed = parseInt(port, 10);
   // Check it's an integer and within the valid range 1–65535
-  if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
-    return true;
-  }
-  return false;
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535;
 }
+
 function validateIpOrLocalhost(ip) {
   if (ip === 'localhost') return true;
   return net.isIP(ip) !== 0;
 }
+
 async function encryptId(id) {
   const key = Buffer.from(process.env.SODIUM_KEY ?? '', 'base64');
   if (!key || key.length !== 32) throw new Error('Sodium key invalid');
@@ -366,6 +367,7 @@ async function encryptId(id) {
   const ciphertext = sodium.crypto_secretbox_easy(Buffer.from(id), nonce, key);
   return Buffer.concat([nonce, Buffer.from(ciphertext)]).toString('base64');
 }
+
 async function decryptId(data) {
   const key = Buffer.from(process.env.SODIUM_KEY ?? '', 'base64');
   if (!key || key.length !== 32) throw new Error('Sodium key invalid');
@@ -375,19 +377,24 @@ async function decryptId(data) {
   const msg = sodium.crypto_secretbox_open_easy(ct, nonce, key);
   return msg ? msg.toString() : '';
 }
+
 async function generateId() {
   const raw = sodium.randombytes_buf(16).toString('hex');
   return await encryptId(raw);
 }
+
 function jsonRes(res, msg, error, data, status = 200) {
   return res.status(status).json({ message: msg, error, data });
 }
+
 function validateEmailFormat(email) {
   return EMAIL_REGEX.test(email);
 }
+
 function validatePasswordFormat(pw) {
   return PASSWORD_REGEX.test(pw);
 }
+
 function validatePlayerNameFormat(n) {
   return PLAYER_NAME_REGEX.test(n);
 }
@@ -655,6 +662,11 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
   }
 });
 
+// ----------------------------------------
+// Games CRUD
+// ----------------------------------------
+const activeGames = new Map();
+
 // Fetch all games
 app.get('/api_v1/games', authenticateToken, async (req, res) => {
   try {
@@ -667,8 +679,6 @@ app.get('/api_v1/games', authenticateToken, async (req, res) => {
 });
 
 // Create a game
-const activeGames = new Map();
-
 app.post('/api_v1/games', authenticateToken, async (req, res) => {
   try {
     const d = req.body.decodedUser;
@@ -685,16 +695,15 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
       password,
     } = req.body;
 
+    if (!ip || !port || !game_name || !map_name || !game_mode)
+      return jsonRes(res, '', 'Missing fields', [], 400);
+
     if (!validateIpOrLocalhost(ip)) {
       return jsonRes(res, '', 'Incorrect IP address', [], 400);
     }
     if (!validatePort(port)) {
       return jsonRes(res, '', 'Incorrect port number', [], 400);
     }
-
-    if (!ip || !port || !game_name || !map_name || !game_mode)
-      return jsonRes(res, '', 'Missing fields', [], 400);
-
     if (
       !USER_CHARS.test(game_name) ||
       !USER_CHARS.test(map_name) ||
@@ -734,6 +743,13 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     });
 
     activeGames.set(gid, newGame.toJSON());
+
+    // Notify lobby via Socket.io
+    // 1) game_created
+    // 2) updated full games_list
+    io.emit('game_created', newGame);
+    io.emit('games_list', Array.from(activeGames.values()));
+
     return jsonRes(res, 'Game created', '', newGame, 201);
   } catch (e) {
     logger.error(e);
@@ -764,7 +780,10 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     const updated = await Game.findOne({ where: { id: gid } });
     activeGames.set(gid, updated.toJSON());
 
+    // Notify lobby
     io.emit('game_updated', updated);
+    io.emit('games_list', Array.from(activeGames.values()));
+
     return jsonRes(res, '', '', updated, 200);
   } catch (e) {
     logger.error(e);
@@ -788,13 +807,108 @@ app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     await gameCheck.destroy();
     activeGames.delete(gid);
 
+    // Notify lobby
     io.emit('game_removed', gid);
+    io.emit('games_list', Array.from(activeGames.values()));
+
     return jsonRes(res, 'Game deleted', '', {}, 200);
   } catch (e) {
     logger.error(e);
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
+
+// ----------------------------------------
+// New REST endpoints: join or leave a game
+// ----------------------------------------
+app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
+  try {
+    const d = req.body.decodedUser;
+    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
+
+    const gid = req.params.game_id;
+    const plainId = await decryptId(gid);
+    if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
+
+    const g = activeGames.get(gid);
+    if (!g) return jsonRes(res, '', 'Game not found', [], 404);
+
+    const cPlayers = g.connected_players || [];
+    if (!cPlayers.includes(d.id)) {
+      cPlayers.push(d.id);
+      g.connected_players = cPlayers;
+
+      // Update DB
+      await Game.update(
+        { connected_players: cPlayers },
+        { where: { id: gid } }
+      );
+      activeGames.set(gid, g);
+
+      // Notify via Socket.io
+      io.emit('player_joined', { game_id: gid, player_id: d.id });
+      io.emit('games_list', Array.from(activeGames.values()));
+    }
+
+    return jsonRes(
+      res,
+      'Joined game',
+      '',
+      { game_id: gid, player_id: d.id },
+      200
+    );
+  } catch (e) {
+    logger.error(e);
+    return jsonRes(res, '', 'Server error', [], 500);
+  }
+});
+
+app.post(
+  '/api_v1/games/:game_id/leave',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const d = req.body.decodedUser;
+      if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
+
+      const gid = req.params.game_id;
+      const plainId = await decryptId(gid);
+      if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
+
+      const g = activeGames.get(gid);
+      if (!g) return jsonRes(res, '', 'Game not found', [], 404);
+
+      const cPlayers = g.connected_players || [];
+      const ix = cPlayers.indexOf(d.id);
+      if (ix > -1) {
+        cPlayers.splice(ix, 1);
+        g.connected_players = cPlayers;
+
+        // Update DB
+        await Game.update(
+          { connected_players: cPlayers },
+          { where: { id: gid } }
+        );
+        activeGames.set(gid, g);
+
+        // Notify via Socket.io
+        io.emit('player_left', { game_id: gid, player_id: d.id });
+        io.emit('games_list', Array.from(activeGames.values()));
+      }
+
+      return jsonRes(
+        res,
+        'Left game',
+        '',
+        { game_id: gid, player_id: d.id },
+        200
+      );
+    } catch (e) {
+      logger.error(e);
+      return jsonRes(res, '', 'Server error', [], 500);
+    }
+  }
+);
 
 // Logout
 app.post('/api_v1/logout', authenticateToken, async (req, res) => {
@@ -827,11 +941,17 @@ const io = new SocketIOServer(httpServer, {
 });
 
 io.on('connection', (socket) => {
+  // Send all current active games to the newly connected socket
   socket.emit('games_list', Array.from(activeGames.values()));
 
+  // The following Socket.io event handlers remain if you still want
+  // to support real-time joins/leaves through sockets.
+  // (Now you also have REST endpoints for them.)
   socket.on('join_game', async ({ game_id, player_id }) => {
     const g = activeGames.get(game_id);
-    if (!g) return jsonRes(socket, '', 'Game not found', [], 404);
+    if (!g) {
+      return; // or socket.emit('error', 'Game not found');
+    }
     const cPlayers = g.connected_players || [];
     if (!cPlayers.includes(player_id)) {
       cPlayers.push(player_id);
@@ -845,12 +965,15 @@ io.on('connection', (socket) => {
       activeGames.set(game_id, g);
 
       io.emit('player_joined', { game_id, player_id });
+      io.emit('games_list', Array.from(activeGames.values()));
     }
   });
 
   socket.on('leave_game', async ({ game_id, player_id }) => {
     const g = activeGames.get(game_id);
-    if (!g) return jsonRes(socket, '', 'Game not found', [], 404);
+    if (!g) {
+      return; // or socket.emit('error', 'Game not found');
+    }
     const cPlayers = g.connected_players || [];
     const ix = cPlayers.indexOf(player_id);
     if (ix > -1) {
@@ -865,6 +988,7 @@ io.on('connection', (socket) => {
       activeGames.set(game_id, g);
 
       io.emit('player_left', { game_id, player_id });
+      io.emit('games_list', Array.from(activeGames.values()));
     }
   });
 });
