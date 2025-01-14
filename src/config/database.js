@@ -1,7 +1,9 @@
+import bcrypt from 'bcrypt';
 import fs from 'fs';
 import path from 'path';
-import * as Sequelize from 'sequelize';
+import * as sq from 'sequelize';
 import { fileURLToPath } from 'url';
+import * as uuid from 'uuid';
 import { data } from './seed.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,30 +51,57 @@ const loadModels = async (baseDir, client) => {
 };
 
 const seedData = async (models) => {
+  console.log('Starting data seeding process...');
   for (const model of models) {
     const modelName = model.name; // Get the model's name
     const modelSeed = data[modelName]; // Fetch the corresponding seed data
 
     if (modelSeed) {
-      // Check if data already exists
-      const existingData = await model.findOne();
-      if (!existingData) {
-        // Seed the data
-        await model.bulkCreate(modelSeed);
-        console.log(`Seeded data for ${modelName}`);
-      } else {
-        console.log(`Data already exists for ${modelName}`);
+      console.log(`Found seed data for ${modelName}`);
+      for (const seedEntry of modelSeed) {
+        const existingData = await model.findOne({
+          where: { email: seedEntry.email }, // Match existing data by unique field (e.g., email)
+        });
+
+        if (existingData) {
+          console.log('Existing data: ', existingData.toJSON());
+          // Check if the password needs to be updated
+          const isPasswordHashed = existingData.password.startsWith('$2b$');
+          if (!isPasswordHashed) {
+            console.log(
+              `Updating password for existing user: ${seedEntry.email}`
+            );
+            const hashedPassword = await bcrypt.hash(seedEntry.password, 10);
+            await existingData.update({ password: hashedPassword });
+          } else {
+            console.log(`Password already hashed for user: ${seedEntry.email}`);
+          }
+          // Check if id is uuid v4
+          const id = existingData.id;
+          if (typeof id !== 'string' || id.length !== 36) {
+            console.log(`Updating id for existing user: ${seedEntry.email}`);
+            await existingData.update({ id: uuid.v4() });
+          }
+        } else {
+          console.log(
+            `Creating new entry for ${modelName}: ${seedEntry.email}`
+          );
+          // Hash the password before creating the new entry
+          seedEntry.password = await bcrypt.hash(seedEntry.password, 10);
+          await model.create(seedEntry);
+        }
       }
     } else {
-      console.log(`No seed data defined for ${modelName}`);
+      console.log(`No seed data defined for ${modelName}, skipping.`);
     }
   }
+  console.log('Data seeding completed.');
 };
 
 export const setupDb = async () => {
   if (db.client) return;
 
-  const client = new Sequelize.Sequelize(
+  const client = new sq.Sequelize(
     process.env.DB_NAME,
     process.env.DB_USER,
     process.env.DB_PASSWORD,

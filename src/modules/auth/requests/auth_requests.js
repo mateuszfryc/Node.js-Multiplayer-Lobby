@@ -1,4 +1,3 @@
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import validator from 'validator';
 
@@ -27,28 +26,36 @@ export const login = async (req, res) => {
     if (!validator.isEmail(email)) {
       console.log(`${prfx} Invalid email format: ${email}`);
       return res.status(400).json(error);
+    } else {
+      console.log(`${prfx} Valid email format: ${email}`);
     }
 
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     if (!user) {
       console.log(
         `${prfx} Invalid user databse entry: ${user} of type ${typeof user}`
       );
       return res.status(401).json(error);
+    } else {
+      console.log(`${prfx} Valid user databse entry: ${user}`);
     }
 
     if (user.timeout_date > 0 && user.timeout_date > Date.now()) {
       console.log(
-        `${prfx} User already logged in attempted to log in again: ${user.id}`
+        `${prfx} User already logged in attempted to log in again, id: ${user.id}`
       );
       return res.status(401).json(error);
+    } else {
+      console.log(`${prfx} User not logged in, id: ${user.id}`);
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await user.verifyPassword(user.password);
 
     if (!isPasswordValid) {
       console.log(`${prfx} Invalid password: ${password}`);
       return res.status(401).json(error);
+    } else {
+      console.log(`${prfx} Valid password: ${password}`);
     }
 
     const timeout = getJwtTimoutSeconds();
@@ -61,6 +68,7 @@ export const login = async (req, res) => {
     );
 
     // Update the user's timeout date in the database
+    console.log(`${prfx} Updating user timeout date: ${user.id}`);
     await updateUserTimeout(user.id, Date.now() + timeout);
 
     console.log(
