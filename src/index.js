@@ -163,14 +163,14 @@ const sequelize = new Sequelize(
   {
     host: process.env.DB_HOST, // e.g. '127.0.0.1'
     dialect: 'postgres',
-    logging: false, // pass function if you want to log queries
-    // If in production and SSL is needed:
-    // dialectOptions: {
-    //   ssl: {
-    //     require: true,
-    //     rejectUnauthorized: false,
-    //   },
-    // },
+    protocol: 'postgres',
+    logging: !isProd, // pass function if you want to log queries
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false, // Heroku's SSL requires this
+      },
+    },
   }
 );
 
@@ -379,8 +379,8 @@ async function generateId() {
   const raw = sodium.randombytes_buf(16).toString('hex');
   return await encryptId(raw);
 }
-function jsonRes(res, msg, error, data) {
-  return res.json({ message: msg, error: error, data: data });
+function jsonRes(res, msg, error, data, status = 200) {
+  return res.status(status).json({ message: msg, error, data });
 }
 function validateEmailFormat(email) {
   return EMAIL_REGEX.test(email);
@@ -398,9 +398,9 @@ function validatePlayerNameFormat(n) {
 async function authenticateToken(req, res, next) {
   try {
     const auth = req.headers.authorization;
-    if (!auth) return jsonRes(res, '', 'Unauthorized', []);
+    if (!auth) return jsonRes(res, '', 'Unauthorized', [], 401);
     const accessToken = auth.split(' ')[1];
-    if (!accessToken) return jsonRes(res, '', 'Unauthorized', []);
+    if (!accessToken) return jsonRes(res, '', 'Unauthorized', [], 401);
 
     // Verify the JWT signature. If expired or invalid, it throws.
     const decoded = jwt.verify(accessToken, process.env.JWT_SECRET ?? '');
@@ -408,7 +408,7 @@ async function authenticateToken(req, res, next) {
     next();
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Unauthorized', []);
+    return jsonRes(res, '', 'Unauthorized', [], 401);
   }
 }
 
@@ -422,19 +422,19 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
     const d = req.body.decodedUser;
     const { user_name, password, player_name } = req.body;
     if (!d || !d.role || d.role !== 'admin')
-      return jsonRes(res, '', 'Request failed', []);
+      return jsonRes(res, '', 'Request failed', [], 400);
     if (!user_name || !password || !player_name)
-      return jsonRes(res, '', 'Request failed', []);
+      return jsonRes(res, '', 'Request failed', [], 400);
     if (!validateEmailFormat(user_name))
-      return jsonRes(res, '', 'Request failed', []);
+      return jsonRes(res, '', 'Request failed', [], 400);
     if (!validatePasswordFormat(password))
-      return jsonRes(res, '', 'Request failed', []);
+      return jsonRes(res, '', 'Request failed', [], 400);
     if (!validatePlayerNameFormat(player_name))
-      return jsonRes(res, '', 'Request failed', []);
+      return jsonRes(res, '', 'Request failed', [], 400);
 
     // Check if user already exists
     const existing = await User.findOne({ where: { user_name } });
-    if (existing) return jsonRes(res, '', 'Request failed', []);
+    if (existing) return jsonRes(res, '', 'Request failed', [], 400);
 
     // Create user
     const hashed = await bcrypt.hash(password, 10);
@@ -463,10 +463,10 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
       expires_at: exp,
     });
 
-    return jsonRes(res, 'User created', '', {});
+    return jsonRes(res, 'User created', '', {}, 201);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -477,17 +477,17 @@ app.get('/api_v1/confirm/:token', async (req, res) => {
     const now = dayjs().toISOString();
 
     const act = await Activation.findOne({ where: { token: t } });
-    if (!act) return jsonRes(res, '', 'Invalid token', []);
+    if (!act) return jsonRes(res, '', 'Invalid token', [], 404);
 
     if (dayjs(now).isAfter(dayjs(act.expires_at)))
-      return jsonRes(res, '', 'Invalid token', []);
+      return jsonRes(res, '', 'Invalid token', [], 400);
 
     await User.update({ validated_at: now }, { where: { id: act.user_id } });
 
-    return jsonRes(res, 'Email confirmed', '', {});
+    return jsonRes(res, 'Email confirmed', '', {}, 200);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Invalid token', []);
+    return jsonRes(res, '', 'Invalid token', [], 500);
   }
 });
 
@@ -508,26 +508,27 @@ const loginSpeedLimiter = slowDown({
 app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
   try {
     const { user_name, password } = req.body;
-    if (!user_name || !password) return jsonRes(res, '', 'Fields missing', []);
+    if (!user_name || !password)
+      return jsonRes(res, '', 'Fields missing', [], 400);
     if (!validateEmailFormat(user_name) || !USER_CHARS.test(password))
-      return jsonRes(res, '', 'Invalid input', []);
+      return jsonRes(res, '', 'Invalid input', [], 400);
 
     // Find user by user_name
     const user = await User.findOne({ where: { user_name } });
-    if (!user) return jsonRes(res, '', 'Invalid credentials', []);
+    if (!user) return jsonRes(res, '', 'Invalid credentials', [], 401);
 
     // Compare passwords
     const passOk = await bcrypt.compare(password, user.password);
-    if (!passOk) return jsonRes(res, '', 'Invalid credentials', []);
+    if (!passOk) return jsonRes(res, '', 'Invalid credentials', [], 401);
 
     // Check if email is validated
     if (!user.validated_at) {
-      return jsonRes(res, '', 'Email not validated', []);
+      return jsonRes(res, '', 'Email not validated', [], 403);
     }
 
     // Check if user is already logged in
     if (user.logged_in) {
-      return jsonRes(res, '', 'Already logged in', []);
+      return jsonRes(res, '', 'Already logged in', [], 409);
     }
 
     // Generate short-lived Access Token (e.g., 15m)
@@ -554,13 +555,19 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
     });
 
     // Return both tokens to the client
-    return jsonRes(res, '', '', {
-      accessToken,
-      refreshToken,
-    });
+    return jsonRes(
+      res,
+      '',
+      '',
+      {
+        accessToken,
+        refreshToken,
+      },
+      200
+    );
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -568,7 +575,8 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
 app.post('/api_v1/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) return jsonRes(res, '', 'Refresh token missing', []);
+    if (!refreshToken)
+      return jsonRes(res, '', 'Refresh token missing', [], 400);
 
     // 1) Verify the raw refresh token with your refresh secret
     const decoded = jwt.verify(
@@ -579,12 +587,12 @@ app.post('/api_v1/refresh', async (req, res) => {
 
     // 2) Find the user in DB
     const user = await User.findOne({ where: { id: decoded.id } });
-    if (!user) return jsonRes(res, '', 'Unauthorized', []);
+    if (!user) return jsonRes(res, '', 'Unauthorized', [], 401);
 
     // 3) Compare the raw token with the stored hashed token
     const match = await bcrypt.compare(refreshToken, user.refresh_token ?? '');
     if (!match) {
-      return jsonRes(res, '', 'Unauthorized', []);
+      return jsonRes(res, '', 'Unauthorized', [], 401);
     }
 
     // 4) Tokens match, so generate a new short-lived access token
@@ -608,13 +616,19 @@ app.post('/api_v1/refresh', async (req, res) => {
       updated_at: dayjs().toISOString(),
     });
 
-    return jsonRes(res, 'Token refreshed', '', {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    });
+    return jsonRes(
+      res,
+      'Token refreshed',
+      '',
+      {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      },
+      200
+    );
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Unauthorized', []);
+    return jsonRes(res, '', 'Unauthorized', [], 401);
   }
 });
 
@@ -622,11 +636,11 @@ app.post('/api_v1/refresh', async (req, res) => {
 app.patch('/api_v1/user', authenticateToken, async (req, res) => {
   try {
     const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', []);
+    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
 
     const { player_name } = req.body;
     if (!player_name || !validatePlayerNameFormat(player_name))
-      return jsonRes(res, '', 'Invalid player_name', []);
+      return jsonRes(res, '', 'Invalid player_name', [], 400);
 
     const now = dayjs().toISOString();
     await User.update(
@@ -634,10 +648,10 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
       { where: { id: d.id } }
     );
 
-    return jsonRes(res, '', 'Success', {});
+    return jsonRes(res, '', 'Success', {}, 200);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -645,10 +659,10 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
 app.get('/api_v1/games', authenticateToken, async (req, res) => {
   try {
     const games = await Game.findAll();
-    return jsonRes(res, '', '', games);
+    return jsonRes(res, '', '', games, 200);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -658,7 +672,7 @@ const activeGames = new Map();
 app.post('/api_v1/games', authenticateToken, async (req, res) => {
   try {
     const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', []);
+    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
 
     let {
       ip,
@@ -672,21 +686,21 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     } = req.body;
 
     if (!validateIpOrLocalhost(ip)) {
-      return jsonRes(res, '', 'Incorrect IP address', []);
+      return jsonRes(res, '', 'Incorrect IP address', [], 400);
     }
     if (!validatePort(port)) {
-      return jsonRes(res, '', 'Incorrect port number', []);
+      return jsonRes(res, '', 'Incorrect port number', [], 400);
     }
 
     if (!ip || !port || !game_name || !map_name || !game_mode)
-      return jsonRes(res, '', 'Missing fields', []);
+      return jsonRes(res, '', 'Missing fields', [], 400);
 
     if (
       !USER_CHARS.test(game_name) ||
       !USER_CHARS.test(map_name) ||
       !USER_CHARS.test(game_mode)
     )
-      return jsonRes(res, '', 'Invalid characters', []);
+      return jsonRes(res, '', 'Invalid characters', [], 400);
 
     if (!max_players) max_players = 8;
     if (!priv) priv = false;
@@ -720,10 +734,10 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     });
 
     activeGames.set(gid, newGame.toJSON());
-    return jsonRes(res, 'Game created', '', newGame);
+    return jsonRes(res, 'Game created', '', newGame, 201);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -731,39 +745,30 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
 app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
   try {
     const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', []);
+    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
 
     const gid = req.params.game_id;
     const plainId = await decryptId(gid);
-    if (!plainId) return jsonRes(res, '', 'Invalid game_id', []);
+    if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
 
     const gameCheck = await Game.findOne({ where: { id: gid } });
-    if (!gameCheck) return jsonRes(res, '', 'Not found', []);
-
-    // Alternatively, if you store an "ownerId" or something,
-    // you'd verify that d.id === gameCheck.ownerId OR d.role === 'admin'
-    // For now, we'll assume the game "belongs" to the same user who created it.
-    // Since the code checks if (d.id !== gameOwner.id && d.role !== 'admin'),
-    // that implies you might have stored userId somewhere on the Games table.
-    // We'll skip that for brevity, but here's the example logic:
-    // if (d.id !== gameCheck.id && d.role !== 'admin') ...
+    if (!gameCheck) return jsonRes(res, '', 'Not found', [], 404);
 
     const data = { ...req.body };
     delete data.decodedUser; // remove token payload
     const now = dayjs().toISOString();
 
     data.updated_at = now;
-    // We'll just do a simple update
     await gameCheck.update(data);
 
     const updated = await Game.findOne({ where: { id: gid } });
     activeGames.set(gid, updated.toJSON());
 
     io.emit('game_updated', updated);
-    return jsonRes(res, '', '', updated);
+    return jsonRes(res, '', '', updated, 200);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -771,26 +776,23 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
 app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
   try {
     const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', []);
+    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
 
     const gid = req.params.game_id;
     const plainId = await decryptId(gid);
-    if (!plainId) return jsonRes(res, '', 'Invalid game_id', []);
+    if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
 
     const gameCheck = await Game.findOne({ where: { id: gid } });
-    if (!gameCheck) return jsonRes(res, '', 'Not found', []);
-
-    // same owner-check logic here if needed
-    // if (d.id !== gameCheck.id && d.role !== 'admin') return ...
+    if (!gameCheck) return jsonRes(res, '', 'Not found', [], 404);
 
     await gameCheck.destroy();
     activeGames.delete(gid);
 
     io.emit('game_removed', gid);
-    return jsonRes(res, 'Game deleted', '', {});
+    return jsonRes(res, 'Game deleted', '', {}, 200);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -798,22 +800,21 @@ app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
 app.post('/api_v1/logout', authenticateToken, async (req, res) => {
   try {
     const d = req.body.decodedUser;
-    if (!d) return jsonRes(res, '', 'Unauthorized', []);
+    if (!d) return jsonRes(res, '', 'Unauthorized', [], 401);
 
     const user = await User.findOne({ where: { id: d.id } });
-    if (!user) return jsonRes(res, '', 'Unauthorized', []);
+    if (!user) return jsonRes(res, '', 'Unauthorized', [], 401);
 
-    // Remove refresh token
     await user.update({
       logged_in: false,
       refresh_token: null,
       updated_at: dayjs().toISOString(),
     });
 
-    return jsonRes(res, 'Logged out', '', {});
+    return jsonRes(res, 'Logged out', '', {}, 200);
   } catch (e) {
     logger.error(e);
-    return jsonRes(res, '', 'Server error', []);
+    return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
@@ -830,7 +831,7 @@ io.on('connection', (socket) => {
 
   socket.on('join_game', async ({ game_id, player_id }) => {
     const g = activeGames.get(game_id);
-    if (!g) return;
+    if (!g) return jsonRes(socket, '', 'Game not found', [], 404);
     const cPlayers = g.connected_players || [];
     if (!cPlayers.includes(player_id)) {
       cPlayers.push(player_id);
@@ -849,7 +850,7 @@ io.on('connection', (socket) => {
 
   socket.on('leave_game', async ({ game_id, player_id }) => {
     const g = activeGames.get(game_id);
-    if (!g) return;
+    if (!g) return jsonRes(socket, '', 'Game not found', [], 404);
     const cPlayers = g.connected_players || [];
     const ix = cPlayers.indexOf(player_id);
     if (ix > -1) {
