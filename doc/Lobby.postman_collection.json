@@ -1,0 +1,169 @@
+{
+  "info": {
+    "_postman_id": "9527a3e2-733f-45f4-aaa2-8e0d070ea28c",
+    "name": "Lobby",
+    "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+    "_exporter_id": "17618717"
+  },
+  "item": [
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "// Safely handle cases where credentials are incorrect or missing properties:",
+              "if (response.accessToken && response.refreshToken) {",
+              "  pm.collectionVariables.set('jwtToken', response.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', response.refreshToken);",
+              "  console.log('Access Token:', response.accessToken);",
+              "  console.log('Refresh Token:', response.refreshToken);",
+              "} else {",
+              "  console.log('No valid tokens in response.');",
+              "}"
+            ],
+            "type": "text/javascript",
+            "packages": {}
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_name\": \"floidmoon@gmail.com\",\n  \"password\": \"N3trunn3r!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{base_url}}api_v1/login"
+      },
+      "response": []
+    },
+    {
+      "name": "Refresh Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "if (response.data && response.data.accessToken && response.data.refreshToken) {",
+              "  pm.collectionVariables.set('jwtToken', response.data.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+              "  console.log('Access Token:', response.data.accessToken);",
+              "  console.log('Refresh Token:', response.data.refreshToken);",
+              "} else {",
+              "  console.log('No valid tokens in response.');",
+              "}"
+            ],
+            "type": "text/javascript",
+            "packages": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"refreshToken\": \"{{refreshToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{base_url}}api_v1/refresh"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Games (Test Auth)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "url": "{{base_url}}api_v1/games"
+      },
+      "response": []
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": "{{base_url}}api_v1/logout"
+      },
+      "response": []
+    },
+    {
+      "name": "Create user (admin only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtToken}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_name\": \"player@example.com\",\n  \"password\": \"Pl@yer123\",\n  \"player_name\": \"NewPlayer\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{base_url}}api_v1/join"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000/"
+    },
+    {
+      "key": "jwtToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    }
+  ]
+}

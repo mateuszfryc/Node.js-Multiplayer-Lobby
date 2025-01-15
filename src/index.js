@@ -1,14 +1,57 @@
+import bcrypt from 'bcrypt';
+import dayjs from 'dayjs';
 import dotenv from 'dotenv';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import slowDown from 'express-slow-down';
+import fs from 'fs';
+import helmet from 'helmet';
+import { createServer } from 'http';
+import https from 'https';
+import jwt from 'jsonwebtoken';
+import sodium from 'libsodium-wrappers';
+import net from 'net';
+import nodemailer from 'nodemailer';
+import { DataTypes, Sequelize } from 'sequelize';
+import { Server as SocketIOServer } from 'socket.io';
+import winston from 'winston';
+import 'winston-daily-rotate-file';
+
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.printf(
+          ({ level, message, timestamp, stack }) =>
+            `${timestamp} [${level}]: ${stack || message}`
+        )
+      ),
+    }),
+    new winston.transports.DailyRotateFile({
+      filename: './.logs/lobby-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '20m',
+      maxFiles: '14d',
+    }),
+  ],
+});
 
 const loadEnv = (envDefinitions) => {
   const envs = {};
-  const isProd = process.env.NODE_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  if (isProd) {
+  if (isProduction) {
     dotenv.config({ path: '.env.prod.db' });
     dotenv.config({ path: '.env.prod.auth' });
-  } //
-  else {
+  } else {
     dotenv.config({ path: '.env.db' });
     dotenv.config({ path: '.env.auth' });
   }
@@ -16,9 +59,7 @@ const loadEnv = (envDefinitions) => {
   const parseBoolean = (value) => {
     if (value === 'true') return true;
     if (value === 'false') return false;
-    throw new Error(
-      `Invalid boolean value: "${value}". Expected "true" or "false".`
-    );
+    throw new Error(`Invalid boolean value: "${value}".`);
   };
 
   for (const {
@@ -29,41 +70,35 @@ const loadEnv = (envDefinitions) => {
     type,
   } of envDefinitions) {
     const value = process.env[key];
-
-    if (!value) {
+    if (!value)
       throw new Error(`Missing required environment variable: ${key}`);
-    }
-
     if (minLength && value.length < minLength) {
       throw new Error(
-        `Environment variable "${key}" must be at least ${minLength} characters long (current length: ${value.length}).`
+        `Environment variable "${key}" must be at least ${minLength} characters.`
       );
     }
-
     if (base64Length && value) {
       const raw = Buffer.from(value, 'base64');
       if (raw.length !== base64Length) {
         throw new Error(
-          `Environment variable "${key}" must be a valid base64-encoded string that decodes to ${base64Length} bytes.`
+          `Environment variable "${key}" must decode to ${base64Length} bytes.`
         );
       }
     }
-
     if (filePath && value) {
       try {
         fs.accessSync(value, fs.constants.R_OK);
       } catch {
         throw new Error(
-          `File specified in environment variable "${key}" does not exist or is not readable: ${value}`
+          `File in "${key}" does not exist or is not readable: ${value}`
         );
       }
     }
-
     switch (type) {
       case 'bool':
         envs[key] = parseBoolean(value);
         break;
-      case 'number':
+      case 'number': {
         const numericValue = Number(value);
         if (isNaN(numericValue)) {
           throw new Error(
@@ -72,20 +107,17 @@ const loadEnv = (envDefinitions) => {
         }
         envs[key] = numericValue;
         break;
+      }
       default:
         envs[key] = value;
-
-      // console.log(`Loaded environment variable: ${key}, value: ${value}`);
     }
   }
-
   console.log('All required environment variables are present and valid.');
-
-  return [envs, isProd];
+  return [envs, isProduction];
 };
 
-const [ENVS, isProd] = loadEnv([
-  { key: 'PORT' /*, type: 'number' */ },
+const [ENVS, isProduction] = loadEnv([
+  { key: 'PORT' },
   { key: 'JWT_SECRET', minLength: 32 },
   { key: 'JWT_REFRESH_SECRET', minLength: 32 },
   { key: 'SODIUM_KEY', base64Length: 32 },
@@ -94,48 +126,32 @@ const [ENVS, isProd] = loadEnv([
   { key: 'DB_NAME' },
   { key: 'DB_HOST' },
   { key: 'DB_PORT', type: 'number' },
-  { key: 'SSL_KEY_PATH' /*, filePath: true */ },
-  { key: 'SSL_CERT_PATH' /*, filePath: true */ },
+  { key: 'SSL_KEY_PATH' },
+  { key: 'SSL_CERT_PATH' },
   { key: 'USE_SSL', type: 'bool' },
   { key: 'SMTP_HOST' },
   { key: 'FROM_EMAIL' },
   { key: 'SMTP_USER' },
   { key: 'SMTP_PASS' },
+  { key: 'ADMIN_USER_NAME' },
+  { key: 'ADMIN_PASSWORD' },
+  { key: 'ADMIN_PLAYER_NAME' },
 ]);
 
 let sslOptions;
 if (ENVS.USE_SSL === 'true') {
   try {
     sslOptions = {
-      key: fs.readFileSync(process.env.SSL_KEY_PATH),
-      cert: fs.readFileSync(process.env.SSL_CERT_PATH),
+      key: fs.readFileSync(ENVS.SSL_KEY_PATH),
+      cert: fs.readFileSync(ENVS.SSL_CERT_PATH),
     };
   } catch (err) {
     throw new Error(`Failed to load SSL certificates: ${err.message}`);
   }
 }
 
-import bcrypt from 'bcrypt';
-import dayjs from 'dayjs';
-import express from 'express';
-import rateLimit from 'express-rate-limit';
-import slowDown from 'express-slow-down';
-import fs from 'fs';
-import helmet from 'helmet';
-import { createServer } from 'http';
-import https from 'https';
-import jwt from 'jsonwebtoken';
-import * as sodium from 'libsodium-wrappers';
-import net from 'net';
-import nodemailer from 'nodemailer';
-import { DataTypes, Sequelize } from 'sequelize';
-import { Server as SocketIOServer } from 'socket.io';
-import winston from 'winston';
-import 'winston-daily-rotate-file';
-
 const app = express();
 app.use(express.json({ strict: true }));
-
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -144,23 +160,16 @@ app.use(
         'script-src': ["'self'"],
       },
     },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true,
-    },
+    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
     frameguard: { action: 'deny' },
     noSniff: true,
   })
 );
 
-if (isProd) {
+if (isProduction) {
   app.set('trust proxy', 1);
   app.use((req, res, next) => {
-    if (req.secure) {
-      return next();
-    }
-    // Redirect if not secure
+    if (req.secure) return next();
     return res.redirect(`https://${req.headers.host}${req.url}`);
   });
 }
@@ -172,224 +181,239 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Setup logging
-const logTransport = new winston.transports.DailyRotateFile({
-  filename: './.logs/lobby-%DATE%.log',
-  datePattern: 'YYYY-MM-DD',
-  zippedArchive: true,
-  maxSize: '20m',
-  maxFiles: '14d',
-});
-const logger = winston.createLogger({
-  transports: [new winston.transports.Console(), logTransport],
-});
-
-// ----------------------------------------
-// Some constants / regexes
-// ----------------------------------------
 const USER_CHARS = /^[A-Za-z0-9!@#$%^&*\+\-\?,]+$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX =
   /^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[!@#$%^&*\+\-\?,])[A-Za-z0-9!@#$%^&*\+\-\?,]{8,}$/;
 const PLAYER_NAME_REGEX = /^[A-Za-z0-9!@#$%^&*\+\-\?,]{3,16}$/;
 
-// ----------------------------------------
-// Sequelize Setup
-// ----------------------------------------
-const sequelize = new Sequelize(
-  process.env.DB_NAME, // e.g. 'myDatabase'
-  process.env.DB_USER, // e.g. 'myUser'
-  process.env.DB_PASSWORD, // e.g. 'myPassword'
-  {
-    host: process.env.DB_HOST, // e.g. '127.0.0.1'
-    dialect: 'postgres',
-    protocol: 'postgres',
-    logging: isProd ? false : console.log, // pass function if you want to log queries
-    dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false, // Heroku's SSL requires this
+class UserModel {
+  constructor(model) {
+    this.model = model;
+  }
+  async createUser(data) {
+    return this.model.create(data);
+  }
+  async findUserByName(user_name) {
+    return this.model.findOne({ where: { user_name } });
+  }
+  async findUserById(id) {
+    return this.model.findOne({ where: { id } });
+  }
+  async updateUser(id, newData) {
+    return this.model.update(newData, { where: { id } });
+  }
+}
+
+class GameModel {
+  constructor(model) {
+    this.model = model;
+  }
+  async findAllGames() {
+    return this.model.findAll();
+  }
+  async findByIpPort(ip, port) {
+    return this.model.findOne({ where: { ip, port } });
+  }
+  async findById(id) {
+    return this.model.findOne({ where: { id } });
+  }
+  async createGame(data) {
+    return this.model.create(data);
+  }
+  async updateGame(id, newData) {
+    return this.model.update(newData, { where: { id } });
+  }
+  async deleteGame(id) {
+    return this.model.destroy({ where: { id } });
+  }
+}
+
+class ActivationModel {
+  constructor(model) {
+    this.model = model;
+  }
+  async createActivation(data) {
+    return this.model.create(data);
+  }
+  async findByToken(token) {
+    return this.model.findOne({ where: { token } });
+  }
+}
+
+class Database {
+  constructor() {
+    this.sequelize = new Sequelize(
+      process.env.DB_NAME,
+      process.env.DB_USER,
+      process.env.DB_PASSWORD,
+      {
+        host: process.env.DB_HOST,
+        dialect: 'postgres',
+        protocol: 'postgres',
+        // logging: ENVS.USE_SSL && isProduction ? false : console.log,
+        logging: false,
+        dialectOptions: isProduction
+          ? {
+              ssl: {
+                require: true,
+                rejectUnauthorized: false, // Allow self-signed certificates
+              },
+            }
+          : {},
+      }
+    );
+
+    this.UsersTable = this.sequelize.define(
+      'user',
+      {
+        id: { type: DataTypes.STRING, primaryKey: true },
+        user_name: { type: DataTypes.STRING, unique: true, allowNull: false },
+        password: { type: DataTypes.STRING, allowNull: false },
+        player_name: { type: DataTypes.STRING, allowNull: false },
+        role: { type: DataTypes.STRING, allowNull: false },
+        logged_in: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        created_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: Sequelize.fn('NOW'),
+        },
+        updated_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: Sequelize.fn('NOW'),
+        },
+        validated_at: { type: DataTypes.DATE, allowNull: true },
+        refresh_token: { type: DataTypes.TEXT, allowNull: true },
       },
-    },
-  }
-);
+      { tableName: 'users', timestamps: true }
+    );
 
-// ----------------------------------------
-// Define Models
-// ----------------------------------------
-const User = sequelize.define(
-  'User',
-  {
-    id: {
-      type: DataTypes.STRING,
-      primaryKey: true,
-    },
-    user_name: {
-      type: DataTypes.STRING,
-      unique: true,
-      allowNull: false,
-    },
-    password: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    player_name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    role: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    logged_in: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: Sequelize.fn('NOW'),
-    },
-    updated_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: Sequelize.fn('NOW'),
-    },
-    validated_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    refresh_token: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-  },
-  {
-    tableName: 'Users',
-    timestamps: true,
-  }
-);
+    this.GamesTable = this.sequelize.define(
+      'game',
+      {
+        id: { type: DataTypes.STRING, primaryKey: true },
+        ip: { type: DataTypes.STRING, allowNull: false },
+        port: { type: DataTypes.INTEGER, allowNull: false },
+        name: { type: DataTypes.STRING, allowNull: false },
+        map_name: { type: DataTypes.STRING, allowNull: false },
+        game_mode: { type: DataTypes.STRING, allowNull: false },
+        connected_players: {
+          type: DataTypes.ARRAY(DataTypes.STRING),
+          allowNull: false,
+          defaultValue: [],
+        },
+        max_players: { type: DataTypes.INTEGER, allowNull: false },
+        private: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        password: {
+          type: DataTypes.STRING,
+          allowNull: false,
+          defaultValue: '',
+        },
+        ping: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+        created_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: Sequelize.fn('NOW'),
+        },
+        updated_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: Sequelize.fn('NOW'),
+        },
+      },
+      { tableName: 'games', timestamps: false }
+    );
 
-const Game = sequelize.define(
-  'Game',
-  {
-    id: {
-      type: DataTypes.STRING,
-      primaryKey: true,
-    },
-    ip: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    port: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    map_name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    game_mode: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    connected_players: {
-      type: DataTypes.ARRAY(DataTypes.STRING),
-      allowNull: false,
-      defaultValue: [],
-    },
-    max_players: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    private: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    password: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: '',
-    },
-    ping: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 0,
-    },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: Sequelize.fn('NOW'),
-    },
-    updated_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: Sequelize.fn('NOW'),
-    },
-  },
-  {
-    tableName: 'Games',
-    timestamps: false,
-  }
-);
+    this.ActivationsTable = this.sequelize.define(
+      'activation',
+      {
+        user_id: { type: DataTypes.STRING, allowNull: false },
+        token: { type: DataTypes.STRING, allowNull: false },
+        created_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: Sequelize.fn('NOW'),
+        },
+        expires_at: { type: DataTypes.DATE, allowNull: false },
+      },
+      { tableName: 'activations', timestamps: false }
+    );
 
-const Activation = sequelize.define(
-  'Activation',
-  {
-    user_id: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    token: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: Sequelize.fn('NOW'),
-    },
-    expires_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-  },
-  {
-    tableName: 'Activations',
-    timestamps: false,
+    this.user = new UserModel(this.UsersTable);
+    this.game = new GameModel(this.GamesTable);
+    this.activation = new ActivationModel(this.ActivationsTable);
   }
-);
 
-// ----------------------------------------
-// Sync the tables if they don't exist
-// ----------------------------------------
+  async init() {
+    await sodium.ready;
+    if (!isProduction) {
+      await this.sequelize.sync({ alter: true });
+    }
+  }
+
+  async seedUsers(usersSeed) {
+    if (!usersSeed || !Array.isArray(usersSeed) || usersSeed.length === 0) {
+      throw new Error('Invalid users seed data');
+    }
+    await this.sequelize.sync({ force: true });
+    for (const user of usersSeed) {
+      await this.user.createUser(user);
+    }
+  }
+}
+
+const db = new Database();
+db.init();
+
 (async () => {
-  await sodium.ready;
+  try {
+    if (
+      !ENVS.ADMIN_USER_NAME ||
+      !ENVS.ADMIN_PASSWORD ||
+      !ENVS.ADMIN_PLAYER_NAME
+    ) {
+      throw new Error('Admin user environment variables are missing.');
+    }
 
-  // This will create any missing tables based on the model definitions.
-  // By default, it won't drop anything. If you want to force re-creation,
-  // you can do: sequelize.sync({ force: true })
-  if (isProd) {
-    await sequelize.sync({ alter: true });
+    const existingAdmin = await db.user.findUserByName(ENVS.ADMIN_USER_NAME);
+    if (existingAdmin) {
+      logger.info('Admin user already exists.');
+    } else {
+      const adminId = await generateId();
+      const hashedPassword = await bcrypt.hash(ENVS.ADMIN_PASSWORD, 10);
+      const now = dayjs().toISOString();
+
+      await db.user.createUser({
+        id: adminId,
+        user_name: ENVS.ADMIN_USER_NAME,
+        password: hashedPassword,
+        player_name: ENVS.ADMIN_PLAYER_NAME,
+        role: 'admin',
+        logged_in: false,
+        created_at: now,
+        updated_at: now,
+        validated_at: now, // Mark as validated immediately
+      });
+
+      logger.info('Admin user created successfully.');
+    }
+  } catch (error) {
+    logger.error('Failed to create admin user:', error);
+    process.exit(1); // Exit with failure if admin creation fails
   }
-
-  // If you prefer manual migration, you'd remove sync() calls and
-  // handle migrations in a separate setup. For demo, this is simplest.
 })();
 
-// ----------------------------------------
-// Helper Functions
-// ----------------------------------------
 function validatePort(port) {
-  // Attempt to parse as integer
   const parsed = parseInt(port, 10);
-  // Check it's an integer and within the valid range 1–65535
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535;
 }
 
@@ -399,7 +423,7 @@ function validateIpOrLocalhost(ip) {
 }
 
 async function encryptId(id) {
-  const key = Buffer.from(process.env.SODIUM_KEY ?? '', 'base64');
+  const key = Buffer.from(ENVS.SODIUM_KEY ?? '', 'base64');
   if (!key || key.length !== 32) throw new Error('Sodium key invalid');
   const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
   const ciphertext = sodium.crypto_secretbox_easy(Buffer.from(id), nonce, key);
@@ -407,7 +431,7 @@ async function encryptId(id) {
 }
 
 async function decryptId(data) {
-  const key = Buffer.from(process.env.SODIUM_KEY ?? '', 'base64');
+  const key = Buffer.from(ENVS.SODIUM_KEY ?? '', 'base64');
   if (!key || key.length !== 32) throw new Error('Sodium key invalid');
   const raw = Buffer.from(data, 'base64');
   const nonce = raw.slice(0, sodium.crypto_secretbox_NONCEBYTES);
@@ -437,17 +461,12 @@ function validatePlayerNameFormat(n) {
   return PLAYER_NAME_REGEX.test(n);
 }
 
-// ----------------------------------------
-// Auth Middleware
-// ----------------------------------------
 async function authenticateToken(req, res, next) {
   try {
-    const auth = req.headers.authorization;
-    if (!auth) return jsonRes(res, '', 'Unauthorized', [], 401);
-    const accessToken = auth.split(' ')[1];
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return jsonRes(res, '', 'Unauthorized', [], 401);
+    const accessToken = authHeader.split(' ')[1];
     if (!accessToken) return jsonRes(res, '', 'Unauthorized', [], 401);
-
-    // Verify the JWT signature. If expired or invalid, it throws.
     const decoded = jwt.verify(accessToken, process.env.JWT_SECRET ?? '');
     req.body.decodedUser = decoded;
     next();
@@ -457,26 +476,21 @@ async function authenticateToken(req, res, next) {
   }
 }
 
-// ----------------------------------------
-// Routes
-// ----------------------------------------
-
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST, // e.g. 'smtp.gmail.com'
+  host: process.env.SMTP_HOST,
   port: parseInt(process.env.SMTP_PORT || '587', 10),
-  secure: false, // true if port is 465, otherwise false
+  secure: false,
   auth: {
-    user: ENVS.SMTP_USER, // email address
+    user: ENVS.SMTP_USER,
     pass: ENVS.SMTP_PASS,
   },
 });
 
-// Admin route: create a new user
 app.post('/api_v1/join', authenticateToken, async (req, res) => {
   try {
-    const d = req.body.decodedUser;
+    const decoded = req.body.decodedUser;
     const { user_name, password, player_name } = req.body;
-    if (!d || !d.role || d.role !== 'admin')
+    if (!decoded || decoded.role !== 'admin')
       return jsonRes(res, '', 'Request failed', [], 400);
     if (!user_name || !password || !player_name)
       return jsonRes(res, '', 'Request failed', [], 400);
@@ -487,17 +501,15 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
     if (!validatePlayerNameFormat(player_name))
       return jsonRes(res, '', 'Request failed', [], 400);
 
-    // Check if user already exists
-    const existing = await User.findOne({ where: { user_name } });
+    const existing = await db.user.findUserByName(user_name);
     if (existing) return jsonRes(res, '', 'Request failed', [], 400);
 
-    // Create user
     const hashed = await bcrypt.hash(password, 10);
-    const rid = await generateId();
+    const newId = await generateId();
     const now = dayjs().toISOString();
 
-    await User.create({
-      id: rid,
+    await db.user.createUser({
+      id: newId,
       user_name,
       password: hashed,
       player_name,
@@ -508,36 +520,29 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
       validated_at: null,
     });
 
-    // Create activation token
     const token = await generateId();
     const exp = dayjs().add(1, 'day').toISOString();
-    await Activation.create({
-      user_id: rid,
+    await db.activation.createActivation({
+      user_id: newId,
       token,
       created_at: now,
       expires_at: exp,
     });
 
     try {
-      const verificationLink = `${isProd ? 'https' : 'http'}://${
+      const verificationLink = `${isProduction ? 'https' : 'http'}://${
         req.headers.host
       }/api_v1/confirm/${token}`;
-
       await transporter.sendMail({
         from: ENVS.FROM_EMAIL,
         to: user_name,
         subject: 'Please Confirm Your Email',
         text: `Hello! Confirm your email by visiting: ${verificationLink}`,
-        html: `
-          <p>Hello!</p>
-          <p>Please confirm your email by clicking the link below:</p>
-          <p><a href="${verificationLink}">${verificationLink}</a></p>
-        `,
+        html: `<p>Hello!</p><p>Please confirm your email by clicking the link below:</p><p><a href="${verificationLink}">${verificationLink}</a></p>`,
       });
     } catch (emailError) {
       logger.error('Failed to send verification email:', emailError);
     }
-
     return jsonRes(res, 'User created', '', {}, 201);
   } catch (e) {
     logger.error(e);
@@ -545,20 +550,15 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
   }
 });
 
-// Confirm activation
 app.get('/api_v1/confirm/:token', async (req, res) => {
   try {
-    const t = req.params.token;
+    const token = req.params.token;
     const now = dayjs().toISOString();
-
-    const act = await Activation.findOne({ where: { token: t } });
+    const act = await db.activation.findByToken(token);
     if (!act) return jsonRes(res, '', 'Invalid token', [], 404);
-
     if (dayjs(now).isAfter(dayjs(act.expires_at)))
       return jsonRes(res, '', 'Invalid token', [], 400);
-
-    await User.update({ validated_at: now }, { where: { id: act.user_id } });
-
+    await db.user.updateUser(act.user_id, { validated_at: now });
     return jsonRes(res, 'Email confirmed', '', {}, 200);
   } catch (e) {
     logger.error(e);
@@ -566,18 +566,16 @@ app.get('/api_v1/confirm/:token', async (req, res) => {
   }
 });
 
-// Login
 const loginLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 5, // limit each IP to 5 requests per windowMs
+  windowMs: 60000,
+  max: 5,
   message: { error: 'Too many login attempts. Please try again later.' },
 });
-
 const loginSpeedLimiter = slowDown({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  delayAfter: 5, // allow 5 requests before introducing delay
-  delayMs: () => 1000, // fixed delay of 1 second per request after limit
-  maxDelayMs: 10 * 1000, // cap delay at 10 seconds
+  windowMs: 60000,
+  delayAfter: 5,
+  delayMs: () => 1000,
+  maxDelayMs: 10000,
 });
 
 app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
@@ -588,105 +586,69 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
     if (!validateEmailFormat(user_name) || !USER_CHARS.test(password))
       return jsonRes(res, '', 'Invalid input', [], 400);
 
-    // Find user by user_name
-    const user = await User.findOne({ where: { user_name } });
+    const user = await db.user.findUserByName(user_name);
     if (!user) return jsonRes(res, '', 'Invalid credentials', [], 401);
 
-    // Compare passwords
     const passOk = await bcrypt.compare(password, user.password);
     if (!passOk) return jsonRes(res, '', 'Invalid credentials', [], 401);
 
-    // Check if email is validated
-    if (!user.validated_at) {
+    if (!user.validated_at)
       return jsonRes(res, '', 'Email not validated', [], 403);
-    }
+    if (user.logged_in) return jsonRes(res, '', 'Already logged in', [], 409);
 
-    // Check if user is already logged in
-    if (user.logged_in) {
-      return jsonRes(res, '', 'Already logged in', [], 409);
-    }
-
-    // Generate short-lived Access Token (e.g., 15m)
     const accessToken = jwt.sign(
       { id: user.id, role: user.role, player_name: user.player_name },
       process.env.JWT_SECRET ?? '',
       { expiresIn: '15m' }
     );
-
-    // Generate Refresh Token (e.g., 7 days)
     const refreshToken = jwt.sign(
       { id: user.id, role: user.role },
-      process.env.JWT_REFRESH_SECRET ?? '', // A different secret, typically
+      process.env.JWT_REFRESH_SECRET ?? '',
       { expiresIn: '7d' }
     );
 
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-
-    // Store the refresh token in the DB
-    await user.update({
+    await db.user.updateUser(user.id, {
       logged_in: true,
       refresh_token: hashedRefreshToken,
       updated_at: dayjs().toISOString(),
     });
 
-    // Return both tokens to the client
-    return jsonRes(
-      res,
-      '',
-      '',
-      {
-        accessToken,
-        refreshToken,
-      },
-      200
-    );
+    return jsonRes(res, '', '', { accessToken, refreshToken }, 200);
   } catch (e) {
     logger.error(e);
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
-// Refresh token
 app.post('/api_v1/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
     if (!refreshToken)
       return jsonRes(res, '', 'Refresh token missing', [], 400);
 
-    // 1) Verify the raw refresh token with your refresh secret
     const decoded = jwt.verify(
       refreshToken,
       process.env.JWT_REFRESH_SECRET ?? ''
     );
-    // e.g. decoded = { id, role, iat, exp }
-
-    // 2) Find the user in DB
-    const user = await User.findOne({ where: { id: decoded.id } });
+    const user = await db.user.findUserById(decoded.id);
     if (!user) return jsonRes(res, '', 'Unauthorized', [], 401);
 
-    // 3) Compare the raw token with the stored hashed token
     const match = await bcrypt.compare(refreshToken, user.refresh_token ?? '');
-    if (!match) {
-      return jsonRes(res, '', 'Unauthorized', [], 401);
-    }
+    if (!match) return jsonRes(res, '', 'Unauthorized', [], 401);
 
-    // 4) Tokens match, so generate a new short-lived access token
     const newAccessToken = jwt.sign(
       { id: user.id, role: user.role, player_name: user.player_name },
       process.env.JWT_SECRET ?? '',
       { expiresIn: '15m' }
     );
-
-    // 5) Optionally do "rolling refresh" by issuing a brand-new refresh token
     const newRefreshToken = jwt.sign(
       { id: user.id, role: user.role },
       process.env.JWT_REFRESH_SECRET ?? '',
       { expiresIn: '7d' }
     );
-    // Hash it again
     const hashedRefresh = await bcrypt.hash(newRefreshToken, 10);
-    // Store the new hashed token
-    await user.update({
+    await db.user.updateUser(user.id, {
       refresh_token: hashedRefresh,
       updated_at: dayjs().toISOString(),
     });
@@ -695,10 +657,7 @@ app.post('/api_v1/refresh', async (req, res) => {
       res,
       'Token refreshed',
       '',
-      {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-      },
+      { accessToken: newAccessToken, refreshToken: newRefreshToken },
       200
     );
   } catch (e) {
@@ -707,22 +666,18 @@ app.post('/api_v1/refresh', async (req, res) => {
   }
 });
 
-// Update user (change player_name)
 app.patch('/api_v1/user', authenticateToken, async (req, res) => {
   try {
-    const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
-
+    const decoded = req.body.decodedUser;
+    if (!decoded || !decoded.id)
+      return jsonRes(res, '', 'Unauthorized', [], 401);
     const { player_name } = req.body;
     if (!player_name || !validatePlayerNameFormat(player_name))
       return jsonRes(res, '', 'Invalid player_name', [], 400);
-
-    const now = dayjs().toISOString();
-    await User.update(
-      { player_name, updated_at: now },
-      { where: { id: d.id } }
-    );
-
+    await db.user.updateUser(decoded.id, {
+      player_name,
+      updated_at: dayjs().toISOString(),
+    });
     return jsonRes(res, '', 'Success', {}, 200);
   } catch (e) {
     logger.error(e);
@@ -730,15 +685,11 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
   }
 });
 
-// ----------------------------------------
-// Games CRUD
-// ----------------------------------------
 const activeGames = new Map();
 
-// Fetch all games
 app.get('/api_v1/games', authenticateToken, async (req, res) => {
   try {
-    const games = await Game.findAll();
+    const games = await db.game.findAllGames();
     return jsonRes(res, '', '', games, 200);
   } catch (e) {
     logger.error(e);
@@ -746,11 +697,11 @@ app.get('/api_v1/games', authenticateToken, async (req, res) => {
   }
 });
 
-// Create a game
 app.post('/api_v1/games', authenticateToken, async (req, res) => {
   try {
-    const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
+    const decoded = req.body.decodedUser;
+    if (!decoded || !decoded.id)
+      return jsonRes(res, '', 'Unauthorized', [], 401);
 
     let {
       ip,
@@ -759,43 +710,38 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
       map_name,
       game_mode,
       max_players,
-      private: priv,
+      private: isPrivate,
       password,
     } = req.body;
-
-    if (!ip || !port || !game_name || !map_name || !game_mode)
+    if (!ip || !port || !game_name || !map_name || !game_mode) {
       return jsonRes(res, '', 'Missing fields', [], 400);
-
-    if (!validateIpOrLocalhost(ip)) {
+    }
+    if (!validateIpOrLocalhost(ip))
       return jsonRes(res, '', 'Incorrect IP address', [], 400);
-    }
-    if (!validatePort(port)) {
+    if (!validatePort(port))
       return jsonRes(res, '', 'Incorrect port number', [], 400);
-    }
     if (
       !USER_CHARS.test(game_name) ||
       !USER_CHARS.test(map_name) ||
       !USER_CHARS.test(game_mode)
-    )
+    ) {
       return jsonRes(res, '', 'Invalid characters', [], 400);
-
+    }
     if (!max_players) max_players = 8;
-    if (!priv) priv = false;
+    if (!isPrivate) isPrivate = false;
     if (!password) password = '';
 
-    // If a game at ip:port exists, delete it first
-    const existing = await Game.findOne({ where: { ip, port } });
+    const existing = await db.game.findByIpPort(ip, port);
     if (existing) {
-      await existing.destroy();
+      await db.game.deleteGame(existing.id);
       activeGames.delete(existing.id);
     }
 
-    const gid = await generateId();
+    const newId = await generateId();
     const now = dayjs().toISOString();
     const pass = await bcrypt.hash(password, 10);
-
-    const newGame = await Game.create({
-      id: gid,
+    const newGame = await db.game.createGame({
+      id: newId,
       ip,
       port,
       name: game_name,
@@ -803,21 +749,16 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
       game_mode,
       connected_players: [],
       max_players,
-      private: priv,
+      private: isPrivate,
       password: pass,
       ping: 0,
       created_at: now,
       updated_at: now,
     });
+    activeGames.set(newId, newGame.toJSON());
 
-    activeGames.set(gid, newGame.toJSON());
-
-    // Notify lobby via Socket.io
-    // 1) game_created
-    // 2) updated full games_list
     io.emit('game_created', newGame);
     io.emit('games_list', Array.from(activeGames.values()));
-
     return jsonRes(res, 'Game created', '', newGame, 201);
   } catch (e) {
     logger.error(e);
@@ -825,33 +766,29 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
   }
 });
 
-// Update a game
 app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
   try {
-    const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
+    const decoded = req.body.decodedUser;
+    if (!decoded || !decoded.id)
+      return jsonRes(res, '', 'Unauthorized', [], 401);
 
-    const gid = req.params.game_id;
-    const plainId = await decryptId(gid);
+    const gameId = req.params.game_id;
+    const plainId = await decryptId(gameId);
     if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
 
-    const gameCheck = await Game.findOne({ where: { id: gid } });
+    const gameCheck = await db.game.findById(gameId);
     if (!gameCheck) return jsonRes(res, '', 'Not found', [], 404);
 
-    const data = { ...req.body };
-    delete data.decodedUser; // remove token payload
-    const now = dayjs().toISOString();
+    const newData = { ...req.body };
+    delete newData.decodedUser;
+    newData.updated_at = dayjs().toISOString();
+    await db.game.updateGame(gameId, newData);
 
-    data.updated_at = now;
-    await gameCheck.update(data);
+    const updated = await db.game.findById(gameId);
+    activeGames.set(gameId, updated.toJSON());
 
-    const updated = await Game.findOne({ where: { id: gid } });
-    activeGames.set(gid, updated.toJSON());
-
-    // Notify lobby
     io.emit('game_updated', updated);
     io.emit('games_list', Array.from(activeGames.values()));
-
     return jsonRes(res, '', '', updated, 200);
   } catch (e) {
     logger.error(e);
@@ -859,26 +796,24 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete a game
 app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
   try {
-    const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
+    const decoded = req.body.decodedUser;
+    if (!decoded || !decoded.id)
+      return jsonRes(res, '', 'Unauthorized', [], 401);
 
-    const gid = req.params.game_id;
-    const plainId = await decryptId(gid);
+    const gameId = req.params.game_id;
+    const plainId = await decryptId(gameId);
     if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
 
-    const gameCheck = await Game.findOne({ where: { id: gid } });
+    const gameCheck = await db.game.findById(gameId);
     if (!gameCheck) return jsonRes(res, '', 'Not found', [], 404);
 
-    await gameCheck.destroy();
-    activeGames.delete(gid);
+    await db.game.deleteGame(gameId);
+    activeGames.delete(gameId);
 
-    // Notify lobby
-    io.emit('game_removed', gid);
+    io.emit('game_removed', gameId);
     io.emit('games_list', Array.from(activeGames.values()));
-
     return jsonRes(res, 'Game deleted', '', {}, 200);
   } catch (e) {
     logger.error(e);
@@ -886,43 +821,34 @@ app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
   }
 });
 
-// ----------------------------------------
-// New REST endpoints: join or leave a game
-// ----------------------------------------
 app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
   try {
-    const d = req.body.decodedUser;
-    if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
+    const decoded = req.body.decodedUser;
+    if (!decoded || !decoded.id)
+      return jsonRes(res, '', 'Unauthorized', [], 401);
 
-    const gid = req.params.game_id;
-    const plainId = await decryptId(gid);
+    const gameId = req.params.game_id;
+    const plainId = await decryptId(gameId);
     if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
 
-    const g = activeGames.get(gid);
-    if (!g) return jsonRes(res, '', 'Game not found', [], 404);
+    const gameData = activeGames.get(gameId);
+    if (!gameData) return jsonRes(res, '', 'Game not found', [], 404);
 
-    const cPlayers = g.connected_players || [];
-    if (!cPlayers.includes(d.id)) {
-      cPlayers.push(d.id);
-      g.connected_players = cPlayers;
+    const cPlayers = gameData.connected_players || [];
+    if (!cPlayers.includes(decoded.id)) {
+      cPlayers.push(decoded.id);
+      gameData.connected_players = cPlayers;
+      await db.game.updateGame(gameId, { connected_players: cPlayers });
+      activeGames.set(gameId, gameData);
 
-      // Update DB
-      await Game.update(
-        { connected_players: cPlayers },
-        { where: { id: gid } }
-      );
-      activeGames.set(gid, g);
-
-      // Notify via Socket.io
-      io.emit('player_joined', { game_id: gid, player_id: d.id });
+      io.emit('player_joined', { game_id: gameId, player_id: decoded.id });
       io.emit('games_list', Array.from(activeGames.values()));
     }
-
     return jsonRes(
       res,
       'Joined game',
       '',
-      { game_id: gid, player_id: d.id },
+      { game_id: gameId, player_id: decoded.id },
       200
     );
   } catch (e) {
@@ -936,39 +862,33 @@ app.post(
   authenticateToken,
   async (req, res) => {
     try {
-      const d = req.body.decodedUser;
-      if (!d || !d.id) return jsonRes(res, '', 'Unauthorized', [], 401);
+      const decoded = req.body.decodedUser;
+      if (!decoded || !decoded.id)
+        return jsonRes(res, '', 'Unauthorized', [], 401);
 
-      const gid = req.params.game_id;
-      const plainId = await decryptId(gid);
+      const gameId = req.params.game_id;
+      const plainId = await decryptId(gameId);
       if (!plainId) return jsonRes(res, '', 'Invalid game_id', [], 400);
 
-      const g = activeGames.get(gid);
-      if (!g) return jsonRes(res, '', 'Game not found', [], 404);
+      const gameData = activeGames.get(gameId);
+      if (!gameData) return jsonRes(res, '', 'Game not found', [], 404);
 
-      const cPlayers = g.connected_players || [];
-      const ix = cPlayers.indexOf(d.id);
-      if (ix > -1) {
-        cPlayers.splice(ix, 1);
-        g.connected_players = cPlayers;
+      const cPlayers = gameData.connected_players || [];
+      const idx = cPlayers.indexOf(decoded.id);
+      if (idx > -1) {
+        cPlayers.splice(idx, 1);
+        gameData.connected_players = cPlayers;
+        await db.game.updateGame(gameId, { connected_players: cPlayers });
+        activeGames.set(gameId, gameData);
 
-        // Update DB
-        await Game.update(
-          { connected_players: cPlayers },
-          { where: { id: gid } }
-        );
-        activeGames.set(gid, g);
-
-        // Notify via Socket.io
-        io.emit('player_left', { game_id: gid, player_id: d.id });
+        io.emit('player_left', { game_id: gameId, player_id: decoded.id });
         io.emit('games_list', Array.from(activeGames.values()));
       }
-
       return jsonRes(
         res,
         'Left game',
         '',
-        { game_id: gid, player_id: d.id },
+        { game_id: gameId, player_id: decoded.id },
         200
       );
     } catch (e) {
@@ -978,21 +898,18 @@ app.post(
   }
 );
 
-// Logout
 app.post('/api_v1/logout', authenticateToken, async (req, res) => {
   try {
-    const d = req.body.decodedUser;
-    if (!d) return jsonRes(res, '', 'Unauthorized', [], 401);
-
-    const user = await User.findOne({ where: { id: d.id } });
+    const decoded = req.body.decodedUser;
+    if (!decoded) return jsonRes(res, '', 'Unauthorized', [], 401);
+    const user = await db.user.findUserById(decoded.id);
     if (!user) return jsonRes(res, '', 'Unauthorized', [], 401);
 
-    await user.update({
+    await db.user.updateUser(decoded.id, {
       logged_in: false,
       refresh_token: null,
       updated_at: dayjs().toISOString(),
     });
-
     return jsonRes(res, 'Logged out', '', {}, 200);
   } catch (e) {
     logger.error(e);
@@ -1000,77 +917,49 @@ app.post('/api_v1/logout', authenticateToken, async (req, res) => {
   }
 });
 
-// ----------------------------------------
-// Socket.io
-// ----------------------------------------
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
   cors: { origin: false, methods: ['GET', 'POST'] },
 });
 
 io.on('connection', (socket) => {
-  // Send all current active games to the newly connected socket
   socket.emit('games_list', Array.from(activeGames.values()));
-
-  // The following Socket.io event handlers remain if you still want
-  // to support real-time joins/leaves through sockets.
-  // (Now you also have REST endpoints for them.)
   socket.on('join_game', async ({ game_id, player_id }) => {
     const g = activeGames.get(game_id);
-    if (!g) {
-      return; // or socket.emit('error', 'Game not found');
-    }
+    if (!g) return;
     const cPlayers = g.connected_players || [];
     if (!cPlayers.includes(player_id)) {
       cPlayers.push(player_id);
       g.connected_players = cPlayers;
-
-      // Update DB
-      await Game.update(
-        { connected_players: cPlayers },
-        { where: { id: game_id } }
-      );
+      await db.game.updateGame(game_id, { connected_players: cPlayers });
       activeGames.set(game_id, g);
-
       io.emit('player_joined', { game_id, player_id });
       io.emit('games_list', Array.from(activeGames.values()));
     }
   });
-
   socket.on('leave_game', async ({ game_id, player_id }) => {
     const g = activeGames.get(game_id);
-    if (!g) {
-      return; // or socket.emit('error', 'Game not found');
-    }
+    if (!g) return;
     const cPlayers = g.connected_players || [];
     const ix = cPlayers.indexOf(player_id);
     if (ix > -1) {
       cPlayers.splice(ix, 1);
       g.connected_players = cPlayers;
-
-      // Update DB
-      await Game.update(
-        { connected_players: cPlayers },
-        { where: { id: game_id } }
-      );
+      await db.game.updateGame(game_id, { connected_players: cPlayers });
       activeGames.set(game_id, g);
-
       io.emit('player_left', { game_id, player_id });
       io.emit('games_list', Array.from(activeGames.values()));
     }
   });
 });
 
-// ----------------------------------------
-// HTTP / HTTPS Server
-// ----------------------------------------
 const port = ENVS.PORT;
-if (isProd && sslOptions) {
-  const options = {
-    key: fs.readFileSync(sslOptions.SSL_KEY_PATH ?? ''),
-    cert: fs.readFileSync(sslOptions.SSL_CERT_PATH ?? ''),
+if (isProduction && sslOptions) {
+  const httpsOptions = {
+    key: sslOptions.key,
+    cert: sslOptions.cert,
   };
-  https.createServer(options, app).listen(port, () => {
+  https.createServer(httpsOptions, app).listen(port, () => {
     logger.info('HTTPS server on ' + port);
   });
 } else {
