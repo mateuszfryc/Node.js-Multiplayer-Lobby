@@ -174,7 +174,7 @@ app.use(limiter);
 
 // Setup logging
 const logTransport = new winston.transports.DailyRotateFile({
-  filename: 'server-%DATE%.log',
+  filename: './.logs/lobby-%DATE%.log',
   datePattern: 'YYYY-MM-DD',
   zippedArchive: true,
   maxSize: '20m',
