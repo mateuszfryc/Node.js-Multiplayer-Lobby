@@ -109,3 +109,19 @@ Create admin user:
 CREATE ROLE <username> WITH LOGIN PASSWORD '<password>';
 ALTER ROLE <username> WITH SUPERUSER;
 ```
+
+Delete user from users:
+
+```sql
+DELETE FROM users WHERE user_name = 'mateuszfryc@gmail.com';
+```
+
+Logout user:
+
+```sql
+UPDATE users
+SET logged_in = false,
+    refresh_token = NULL,
+    updated_at = NOW()
+WHERE user_name = 'floidmoon@gmail.com';
+```

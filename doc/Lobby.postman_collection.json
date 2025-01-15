@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9527a3e2-733f-45f4-aaa2-8e0d070ea28c",
+    "_postman_id": "c327d272-a9d4-40e7-bf52-f6544a75253c",
     "name": "Lobby",
     "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
     "_exporter_id": "17618717"
@@ -14,14 +14,19 @@
           "script": {
             "exec": [
               "const response = pm.response.json();",
-              "// Safely handle cases where credentials are incorrect or missing properties:",
-              "if (response.accessToken && response.refreshToken) {",
-              "  pm.collectionVariables.set('jwtToken', response.accessToken);",
-              "  pm.collectionVariables.set('refreshToken', response.refreshToken);",
-              "  console.log('Access Token:', response.accessToken);",
-              "  console.log('Refresh Token:', response.refreshToken);",
+              "",
+              "// Check if the tokens exist in the response",
+              "if (response.data && response.data.accessToken && response.data.refreshToken) {",
+              "    // Set tokens as variables in Postman for future requests",
+              "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+              "    pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+              "",
+              "    // Log tokens to the console",
+              "    console.log('Access Token:', response.data.accessToken);",
+              "    console.log('Refresh Token:', response.data.refreshToken);",
               "} else {",
-              "  console.log('No valid tokens in response.');",
+              "    // Log an error message if tokens are missing",
+              "    console.log('No valid tokens in response.');",
               "}"
             ],
             "type": "text/javascript",
@@ -64,7 +69,7 @@
             "exec": [
               "const response = pm.response.json();",
               "if (response.data && response.data.accessToken && response.data.refreshToken) {",
-              "  pm.collectionVariables.set('jwtToken', response.data.accessToken);",
+              "  pm.collectionVariables.set('accessToken', response.data.accessToken);",
               "  pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
               "  console.log('Access Token:', response.data.accessToken);",
               "  console.log('Refresh Token:', response.data.refreshToken);",
@@ -79,7 +84,13 @@
       ],
       "request": {
         "method": "POST",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{accessToken}}",
+            "type": "text"
+          }
+        ],
         "body": {
           "mode": "raw",
           "raw": "{\n    \"refreshToken\": \"{{refreshToken}}\"\n}",
@@ -100,7 +111,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwtToken}}",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -115,7 +126,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwtToken}}",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -134,13 +145,13 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwtToken}}",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"user_name\": \"player@example.com\",\n  \"password\": \"Pl@yer123\",\n  \"player_name\": \"NewPlayer\"\n}",
+          "raw": "{\n  \"user_name\": \"mateuszfryc@gmail.com\",\n  \"password\": \"N3trunn3r!0\",\n  \"player_name\": \"mateusz\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -148,6 +159,106 @@
           }
         },
         "url": "{{base_url}}api_v1/join"
+      },
+      "response": []
+    },
+    {
+      "name": "Confirm Email",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}api_v1/confirm/{{token}}"
+      },
+      "response": []
+    },
+    {
+      "name": "Create Game",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ip\": \"127.0.0.1\",\n  \"port\": 12345,\n  \"game_name\": \"Test Game\",\n  \"map_name\": \"Map1\",\n  \"game_mode\": \"Deathmatch\",\n  \"max_players\": 8,\n  \"private\": false\n}"
+        },
+        "url": "{{base_url}}api_v1/games"
+      },
+      "response": []
+    },
+    {
+      "name": "Update Game",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"game_name\": \"Updated Game\"\n}"
+        },
+        "url": "{{base_url}}api_v1/games/{{game_id}}"
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Game",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": "{{base_url}}api_v1/games/{{game_id}}"
+      },
+      "response": []
+    },
+    {
+      "name": "Join Game",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": "{{base_url}}api_v1/games/{{game_id}}/join"
+      },
+      "response": []
+    },
+    {
+      "name": "Leave Game",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": "{{base_url}}api_v1/games/{{game_id}}/leave"
       },
       "response": []
     }
@@ -158,11 +269,19 @@
       "value": "http://localhost:3000/"
     },
     {
-      "key": "jwtToken",
+      "key": "accessToken",
       "value": ""
     },
     {
       "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "game_id",
+      "value": ""
+    },
+    {
+      "key": "token",
       "value": ""
     }
   ]
