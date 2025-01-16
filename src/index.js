@@ -168,7 +168,6 @@ const [ENVS, isProduction] = loadEnv([
   { key: 'ADMIN_USER_NAME' },
   { key: 'ADMIN_PASSWORD' },
   { key: 'ADMIN_PLAYER_NAME' },
-  { key: '' },
 ]);
 
 let sslOptions;
