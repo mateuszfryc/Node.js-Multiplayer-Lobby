@@ -151,7 +151,6 @@ const [ENVS, isProduction] = loadEnv([
   { key: 'PORT' },
   { key: 'JWT_SECRET', minLength: 32 },
   { key: 'JWT_REFRESH_SECRET', minLength: 32 },
-  { key: 'SODIUM_KEY', base64Length: 32 },
   { key: 'DB_USER' },
   { key: 'DB_PASSWORD' },
   { key: 'DB_NAME' },
