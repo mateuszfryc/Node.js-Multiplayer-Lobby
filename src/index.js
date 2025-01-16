@@ -9,35 +9,27 @@ import helmet from 'helmet';
 import { createServer } from 'http';
 import https from 'https';
 import jwt from 'jsonwebtoken';
-import sodium from 'libsodium-wrappers';
 import net from 'net';
 import nodemailer from 'nodemailer';
 import process from 'process';
 import { DataTypes, Sequelize } from 'sequelize';
 import { Server as SocketIOServer } from 'socket.io';
+import { v4 as uuidv4 } from 'uuid';
 import winston from 'winston';
 import 'winston-daily-rotate-file';
 
-/**
- * -----------------------------
- * WINSTON LOGGER CONFIGURATION
- * -----------------------------
- * This example includes a simple redaction mechanism
- * for known sensitive keys. You can expand or remove it.
- */
 const sensitiveKeys = [
   'password',
   'token',
   'refresh_token',
-  'user_name', // Emails
-  'ip', // If you ever store it in the log info
-  'port', // If you ever store it in the log info
-  'Authorization', // In case headers slip in
+  'user_name',
+  'ip',
+  'port',
+  'Authorization',
   'accessToken',
   'refreshToken',
 ];
 
-// Custom format that redacts sensitive keys
 const redactSensitiveData = winston.format((info) => {
   for (const key of sensitiveKeys) {
     if (info[key]) {
@@ -48,7 +40,7 @@ const redactSensitiveData = winston.format((info) => {
 });
 
 const logger = winston.createLogger({
-  level: 'debug', // Default log level
+  level: 'debug',
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(
@@ -89,7 +81,6 @@ const logger = winston.createLogger({
 const loadEnv = (envDefinitions) => {
   const envs = {};
   const isProduction = process.env.NODE_ENV === 'production';
-
   if (isProduction) {
     dotenv.config({ path: '.env.prod.db' });
     dotenv.config({ path: '.env.prod.auth' });
@@ -97,13 +88,11 @@ const loadEnv = (envDefinitions) => {
     dotenv.config({ path: '.env.db' });
     dotenv.config({ path: '.env.auth' });
   }
-
   const parseBoolean = (value) => {
     if (value === 'true') return true;
     if (value === 'false') return false;
     throw new Error(`Invalid boolean value: "${value}".`);
   };
-
   for (const {
     key,
     minLength,
@@ -154,8 +143,6 @@ const loadEnv = (envDefinitions) => {
         envs[key] = value;
     }
   }
-
-  // Use Winston for this info-level log
   logger.info('All required environment variables are present and valid.');
   return [envs, isProduction];
 };
@@ -236,23 +223,18 @@ class UserModel {
   constructor(model) {
     this.model = model;
   }
-
   async createUser(data) {
     return this.model.create(data);
   }
-
   async findUserByName(user_name) {
     return this.model.findOne({ where: { user_name } });
   }
-
   async findUserById(id) {
     return this.model.findOne({ where: { id } });
   }
-
   async updateUser(id, newData) {
     return this.model.update(newData, { where: { id } });
   }
-
   async loginUser(user, refreshToken) {
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
     await this.updateUser(user.id, {
@@ -261,13 +243,16 @@ class UserModel {
       updated_at: dayjs().toISOString(),
     });
   }
-
   async logoutUser(userId) {
     await this.updateUser(userId, {
       logged_in: false,
       refresh_token: null,
       updated_at: dayjs().toISOString(),
     });
+  }
+
+  async deleteUser(userId) {
+    return this.model.destroy({ where: { id: userId } });
   }
 }
 
@@ -317,22 +302,25 @@ class Database {
         host: ENVS.DB_HOST,
         dialect: 'postgres',
         protocol: 'postgres',
-        logging: false, // Turn off Sequelize default logging
+        logging: false,
         dialectOptions: isProduction
           ? {
               ssl: {
                 require: true,
-                rejectUnauthorized: false, // Allow self-signed certificates
+                rejectUnauthorized: false,
               },
             }
           : {},
       }
     );
-
     this.UsersTable = this.sequelize.define(
       'user',
       {
-        id: { type: DataTypes.STRING, primaryKey: true },
+        id: {
+          type: DataTypes.UUID,
+          defaultValue: DataTypes.UUIDV4,
+          primaryKey: true,
+        },
         user_name: { type: DataTypes.STRING, unique: true, allowNull: false },
         password: { type: DataTypes.STRING, allowNull: false },
         player_name: { type: DataTypes.STRING, allowNull: false },
@@ -352,11 +340,14 @@ class Database {
         updatedAt: 'updated_at',
       }
     );
-
     this.GamesTable = this.sequelize.define(
       'game',
       {
-        id: { type: DataTypes.STRING, primaryKey: true },
+        id: {
+          type: DataTypes.UUID,
+          defaultValue: DataTypes.UUIDV4,
+          primaryKey: true,
+        },
         ip: { type: DataTypes.STRING, allowNull: false },
         port: { type: DataTypes.INTEGER, allowNull: false },
         name: { type: DataTypes.STRING, allowNull: false },
@@ -387,12 +378,15 @@ class Database {
         updatedAt: 'updated_at',
       }
     );
-
     this.ActivationsTable = this.sequelize.define(
       'activation',
       {
-        user_id: { type: DataTypes.STRING, allowNull: false },
-        token: { type: DataTypes.STRING, allowNull: false },
+        user_id: { type: DataTypes.UUID, allowNull: false },
+        token: {
+          type: DataTypes.UUID,
+          defaultValue: DataTypes.UUIDV4,
+          allowNull: false,
+        },
         expires_at: { type: DataTypes.DATE, allowNull: false },
       },
       {
@@ -402,19 +396,15 @@ class Database {
         updatedAt: 'updated_at',
       }
     );
-
     this.user = new UserModel(this.UsersTable);
     this.game = new GameModel(this.GamesTable);
     this.activation = new ActivationModel(this.ActivationsTable);
   }
-
   async init() {
-    await sodium.ready;
     if (!isProduction) {
       await this.sequelize.sync({ alter: true });
     }
   }
-
   async seedUsers(usersSeed) {
     if (!usersSeed || !Array.isArray(usersSeed) || usersSeed.length === 0) {
       throw new Error('Invalid users seed data');
@@ -428,7 +418,6 @@ class Database {
 
 const db = new Database();
 await db.init();
-
 await (async () => {
   try {
     if (
@@ -438,33 +427,29 @@ await (async () => {
     ) {
       throw new Error('Admin user environment variables are missing.');
     }
-
     const existingAdmin = await db.user.findUserByName(ENVS.ADMIN_USER_NAME);
     if (existingAdmin) {
-      // Avoid logging the admin's user_name/email
       logger.info('Admin user already exists');
     } else {
-      const adminId = await generateId();
+      const adminId = uuidv4();
       const hashedPassword = await bcrypt.hash(ENVS.ADMIN_PASSWORD, 10);
       const now = dayjs().toISOString();
-
       await db.user.createUser({
         id: adminId,
-        user_name: ENVS.ADMIN_USER_NAME, // Not logging this
+        user_name: ENVS.ADMIN_USER_NAME,
         password: hashedPassword,
-        player_name: ENVS.ADMIN_PLAYER_NAME, // Safe to store, but not logging here
+        player_name: ENVS.ADMIN_PLAYER_NAME,
         role: 'admin',
         logged_in: false,
         created_at: now,
         updated_at: now,
-        validated_at: now, // Mark as validated immediately
+        validated_at: now,
       });
-
       logger.info('Admin user created successfully');
     }
   } catch (error) {
     logger.error('Failed to create admin user', { error: error.message });
-    process.exit(1); // Exit with failure if admin creation fails
+    process.exit(1);
   }
 })();
 
@@ -476,37 +461,6 @@ function validatePort(port) {
 function validateIpOrLocalhost(ip) {
   if (ip === 'localhost') return true;
   return net.isIP(ip) !== 0;
-}
-
-async function encryptId(id) {
-  const key = Buffer.from(ENVS.SODIUM_KEY ?? '', 'base64');
-  if (!key || key.length !== 32) throw new Error('Sodium key invalid');
-
-  const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-  const ciphertext = sodium.crypto_secretbox_easy(Buffer.from(id), nonce, key);
-  const combined = Buffer.concat([nonce, Buffer.from(ciphertext)]);
-
-  return combined
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-async function decryptId(data) {
-  const key = Buffer.from(ENVS.SODIUM_KEY ?? '', 'base64');
-  if (!key || key.length !== 32) throw new Error('Sodium key invalid');
-
-  const raw = Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-  const nonce = raw.slice(0, sodium.crypto_secretbox_NONCEBYTES);
-  const ct = raw.slice(sodium.crypto_secretbox_NONCEBYTES);
-  const msg = sodium.crypto_secretbox_open_easy(ct, nonce, key);
-  return msg ? msg.toString() : '';
-}
-
-async function generateId() {
-  const raw = sodium.randombytes_buf(16).toString('hex');
-  return await encryptId(raw);
 }
 
 function jsonRes(res, msg, error, data, status = 200) {
@@ -526,15 +480,13 @@ function validatePlayerNameFormat(n) {
 }
 
 async function authenticateToken(req, res, next) {
-  // Minimal log: Do not log entire headers (which includes Authorization).
   logger.info('Authenticating token for incoming request', {
     method: req.method,
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
-    const authHeader = req.headers.authorization; // whell shit
+    const authHeader = req.headers.authorization;
     if (!authHeader) {
       logger.warn('No Authorization header found');
       return jsonRes(res, '', 'Unauthorized', [], 401);
@@ -544,9 +496,7 @@ async function authenticateToken(req, res, next) {
       logger.warn('No access token found in Authorization header');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
     const decoded = jwt.verify(accessToken, ENVS.JWT_SECRET ?? '');
-    // Log only safe aspects of the decoded payload
     logger.debug('Token decoded successfully', { role: decoded.role });
     req.body.decodedUser = decoded;
     next();
@@ -581,16 +531,12 @@ app.post('/api_v1/user', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const decoded = req.body.decodedUser;
     logger.debug('Decoded user role for register route', {
       role: decoded?.role,
     });
-
-    // We do NOT log user_name or password
     const { user_name, password, player_name } = req.body;
-
     if (!decoded || decoded.role !== 'admin') {
       logger.warn('Non-admin attempted to create new user');
       return jsonRes(res, '', 'Request failed', [], 400);
@@ -611,43 +557,35 @@ app.post('/api_v1/user', authenticateToken, async (req, res) => {
       logger.warn('Invalid player_name format in /api_v1/register');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
-
     const existing = await db.user.findUserByName(user_name);
     if (existing) {
       logger.warn('Attempt to create existing user');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
-
     const hashed = await bcrypt.hash(password, 10);
-    const newId = await generateId();
+    const newId = uuidv4();
     const now = dayjs().toISOString();
-
     await db.user.createUser({
       id: newId,
-      user_name, // Not logging
+      user_name,
       password: hashed,
-      player_name, // Safe to store
+      player_name,
       role: 'player',
       logged_in: false,
       created_at: now,
       updated_at: now,
       validated_at: null,
     });
-
     logger.info('New user created successfully');
-
-    const token = await generateId();
+    const token = uuidv4();
     const exp = dayjs().add(1, 'day').toISOString();
     await db.activation.createActivation({
-      user_id: newId, // Not logging
-      token, // Not logging
+      user_id: newId,
+      token,
       created_at: now,
       expires_at: exp,
     });
-
-    // We won't log the token value
     logger.debug('Activation token created for new user (token redacted)');
-
     try {
       const verificationLink = `${isProduction ? 'https' : 'http'}://${
         req.headers.host
@@ -665,7 +603,7 @@ app.post('/api_v1/user', authenticateToken, async (req, res) => {
         error: emailError.message,
       });
     }
-    return jsonRes(res, 'User created', '', {}, 201);
+    return jsonRes(res, 'User created', '', { id: newId, player_name }, 201);
   } catch (e) {
     logger.error('Error in /api_v1/user route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
@@ -678,9 +616,8 @@ app.get('/api_v1/confirm/:token', async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
-    const token = req.params.token; // Not logging the value
+    const token = req.params.token;
     const now = dayjs().toISOString();
     const act = await db.activation.findByToken(token);
     if (!act) {
@@ -718,32 +655,26 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
-    const { user_name, password } = req.body; // Not logging them
-
+    const { user_name, password } = req.body;
     if (!user_name || !password || !validateEmailFormat(user_name)) {
       logger.warn('Fields missing in login request');
       return jsonRes(res, '', 'Invalid credentials', [], 400);
     }
-
     if (!validateEmailFormat(user_name)) {
       logger.warn('Invalid email input during login');
       return jsonRes(res, '', 'Invalid credentials', [], 400);
     }
-
     const user = await db.user.findUserByName(user_name);
     if (!user) {
       logger.warn('Invalid credentials: user not found');
       return jsonRes(res, '', 'Invalid credentials', [], 401);
     }
-
     const passOk = await bcrypt.compare(password, user.password);
     if (!passOk) {
       logger.warn('Invalid credentials: wrong password');
       return jsonRes(res, '', 'Invalid credentials', [], 401);
     }
-
     if (!user.validated_at) {
       logger.warn('Email not validated for this user');
       return jsonRes(res, '', 'Email not validated', [], 403);
@@ -752,7 +683,6 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
       logger.warn('User already logged in');
       return jsonRes(res, '', 'Already logged in', [], 409);
     }
-
     const accessToken = jwt.sign(
       { id: user.id, role: user.role, player_name: user.player_name },
       ENVS.JWT_SECRET ?? '',
@@ -763,9 +693,7 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
       ENVS.JWT_REFRESH_SECRET ?? '',
       { expiresIn: '7d' }
     );
-
     await db.user.loginUser(user, refreshToken);
-
     logger.info('User logged in successfully');
     return jsonRes(res, '', '', { accessToken, refreshToken }, 200);
   } catch (e) {
@@ -780,29 +708,24 @@ app.post('/api_v1/refresh', async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
-    const { refreshToken } = req.body; // Not logging the token
+    const { refreshToken } = req.body;
     if (!refreshToken) {
       logger.warn('Refresh token missing');
       return jsonRes(res, '', 'Refresh token missing', [], 400);
     }
-
     const decoded = jwt.verify(refreshToken, ENVS.JWT_REFRESH_SECRET ?? '');
     logger.debug('Refresh token decoded successfully', { role: decoded?.role });
-
     const user = await db.user.findUserById(decoded.id);
     if (!user) {
       logger.warn('User not found for refresh token');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
     const match = await bcrypt.compare(refreshToken, user.refresh_token ?? '');
     if (!match) {
       logger.warn('Refresh token mismatch');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
     const newAccessToken = jwt.sign(
       { id: user.id, role: user.role, player_name: user.player_name },
       ENVS.JWT_SECRET ?? '',
@@ -815,7 +738,6 @@ app.post('/api_v1/refresh', async (req, res) => {
     );
     await db.user.loginUser(user, newRefreshToken);
     logger.info('Token refreshed successfully');
-
     return jsonRes(
       res,
       'Token refreshed',
@@ -835,7 +757,6 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const decoded = req.body.decodedUser;
     logger.debug('Decoded user role for user update', { role: decoded?.role });
@@ -866,7 +787,6 @@ app.delete('/api_v1/user/:user_id', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const decoded = req.body.decodedUser;
     logger.debug('Decoded user role for user deletion', {
@@ -876,21 +796,18 @@ app.delete('/api_v1/user/:user_id', authenticateToken, async (req, res) => {
       logger.warn('Unauthorized user deletion attempt');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
-    const userId = req.params.user_id; // Not logging the actual ID
-    const plainId = await decryptId(userId);
+    const userId = req.params.user_id;
+    const plainId = userId;
     if (!plainId) {
       logger.warn('Unable to decrypt user_id');
       return jsonRes(res, '', 'Invalid user_id', [], 400);
     }
-
     const user = await db.user.findUserById(userId);
     if (!user) {
       logger.warn('User not found for deletion');
       return jsonRes(res, '', 'Not found', [], 404);
     }
-
-    await db.user.updateUser(userId, { validated_at: null });
+    await db.user.deleteUser(userId);
     logger.info('User deleted successfully');
     return jsonRes(res, '', 'Success', {}, 200);
   } catch (e) {
@@ -909,11 +826,9 @@ app.get('/api_v1/games', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const games = await db.game.findAllGames();
     logger.debug('Fetched games list', { count: games.length });
-    // Return sanitized game data to the client if needed
     return jsonRes(res, '', '', games, 200);
   } catch (e) {
     logger.error('Error in GET /api_v1/games route', { error: e.message });
@@ -927,7 +842,6 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const decoded = req.body.decodedUser;
     logger.debug('Decoded user role for creating game', {
@@ -937,7 +851,6 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
       logger.warn('Unauthorized attempt to create game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
     let {
       ip,
       port,
@@ -948,8 +861,6 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
       private: isPrivate,
       password,
     } = req.body;
-
-    // Do NOT log ip, port, or password
     if (!ip || !port || !game_name || !map_name || !game_mode) {
       logger.warn('Missing required fields in create game request');
       return jsonRes(res, '', 'Missing fields', [], 400);
@@ -973,22 +884,20 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     if (!max_players) max_players = 8;
     if (!isPrivate) isPrivate = false;
     if (!password) password = '';
-
     const existing = await db.game.findByIpPort(ip, port);
     if (existing) {
       logger.debug('Existing game found for IP:Port. Replacing game entry');
       await db.game.deleteGame(existing.id);
       activeGames.delete(existing.id);
     }
-
-    const newId = await generateId();
+    const newId = uuidv4();
     const now = dayjs().toISOString();
     const pass = await bcrypt.hash(password, 10);
     const newGame = await db.game.createGame({
       id: newId,
-      ip, // Not logged
-      port, // Not logged
-      name: game_name, // Safe to log name in events if desired
+      ip,
+      port,
+      name: game_name,
       map_name,
       game_mode,
       connected_players: [],
@@ -1000,16 +909,13 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
       updated_at: now,
     });
     activeGames.set(newId, newGame.toJSON());
-
     logger.info('Game created successfully', {
-      // Example of logging safe fields:
       game_name,
       map_name,
       game_mode,
       max_players,
       private: isPrivate,
     });
-
     io.emit('game_created', newGame);
     io.emit('games_list', Array.from(activeGames.values()));
     return jsonRes(res, 'Game created', '', newGame, 201);
@@ -1025,7 +931,6 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const decoded = req.body.decodedUser;
     logger.debug('Decoded user role for updating game', {
@@ -1035,29 +940,23 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
       logger.warn('Unauthorized attempt to update game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
-    const gameId = req.params.game_id; // Not logging the actual ID value
-    const plainId = await decryptId(gameId);
+    const gameId = req.params.game_id;
+    const plainId = gameId;
     if (!plainId) {
       logger.warn('Unable to decrypt game_id');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
-
     const gameCheck = await db.game.findById(gameId);
     if (!gameCheck) {
       logger.warn('Game not found for update');
       return jsonRes(res, '', 'Not found', [], 404);
     }
-
     const newData = { ...req.body };
     delete newData.decodedUser;
-
     await db.game.updateGame(gameId, newData);
     logger.debug('Game updated in database');
-
     const updated = await db.game.findById(gameId);
     activeGames.set(gameId, updated.toJSON());
-
     io.emit('game_updated', updated);
     io.emit('games_list', Array.from(activeGames.values()));
     logger.info('Game updated successfully');
@@ -1076,7 +975,6 @@ app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const decoded = req.body.decodedUser;
     logger.debug('Decoded user role for deleting game', {
@@ -1086,23 +984,19 @@ app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
       logger.warn('Unauthorized attempt to delete game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
-    const gameId = req.params.game_id; // Not logging the actual ID
-    const plainId = await decryptId(gameId);
+    const gameId = req.params.game_id;
+    const plainId = gameId;
     if (!plainId) {
       logger.warn('Unable to decrypt game_id for deletion');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
-
     const gameCheck = await db.game.findById(gameId);
     if (!gameCheck) {
       logger.warn('Game not found for deletion');
       return jsonRes(res, '', 'Not found', [], 404);
     }
-
     await db.game.deleteGame(gameId);
     activeGames.delete(gameId);
-
     io.emit('game_removed', gameId);
     io.emit('games_list', Array.from(activeGames.values()));
     logger.info('Game deleted successfully');
@@ -1121,7 +1015,6 @@ app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const decoded = req.body.decodedUser;
     logger.debug('Decoded user role for joining game', { role: decoded?.role });
@@ -1129,27 +1022,23 @@ app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
       logger.warn('Unauthorized attempt to join game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
     const gameId = req.params.game_id;
-    const plainId = await decryptId(gameId);
+    const plainId = gameId;
     if (!plainId) {
       logger.warn('Unable to decrypt game_id for join');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
-
     const gameData = activeGames.get(gameId);
     if (!gameData) {
       logger.warn('Game not found in activeGames for join');
       return jsonRes(res, '', 'Game not found', [], 404);
     }
-
     const cPlayers = gameData.connected_players || [];
     if (!cPlayers.includes(decoded.id)) {
       cPlayers.push(decoded.id);
       gameData.connected_players = cPlayers;
       await db.game.updateGame(gameId, { connected_players: cPlayers });
       activeGames.set(gameId, gameData);
-
       logger.info('Player joined the game', {
         connectedPlayersCount: cPlayers.length,
       });
@@ -1174,7 +1063,6 @@ app.post(
       url: req.url,
       clientIp: req.ip,
     });
-
     try {
       const decoded = req.body.decodedUser;
       logger.debug('Decoded user role for leaving game', {
@@ -1184,20 +1072,17 @@ app.post(
         logger.warn('Unauthorized attempt to leave game');
         return jsonRes(res, '', 'Unauthorized', [], 401);
       }
-
       const gameId = req.params.game_id;
-      const plainId = await decryptId(gameId);
+      const plainId = gameId;
       if (!plainId) {
         logger.warn('Unable to decrypt game_id for leave');
         return jsonRes(res, '', 'Invalid game_id', [], 400);
       }
-
       const gameData = activeGames.get(gameId);
       if (!gameData) {
         logger.warn('Game not found in activeGames for leave');
         return jsonRes(res, '', 'Game not found', [], 404);
       }
-
       const cPlayers = gameData.connected_players || [];
       const idx = cPlayers.indexOf(decoded.id);
       if (idx > -1) {
@@ -1205,7 +1090,6 @@ app.post(
         gameData.connected_players = cPlayers;
         await db.game.updateGame(gameId, { connected_players: cPlayers });
         activeGames.set(gameId, gameData);
-
         logger.info('Player left the game', {
           connectedPlayersCount: cPlayers.length,
         });
@@ -1228,7 +1112,6 @@ app.post('/api_v1/logout', authenticateToken, async (req, res) => {
     url: req.url,
     clientIp: req.ip,
   });
-
   try {
     const { decodedUser } = req.body;
     logger.debug('Decoded user role for logout', { role: decodedUser?.role });
@@ -1241,10 +1124,8 @@ app.post('/api_v1/logout', authenticateToken, async (req, res) => {
       logger.warn('User not found during logout');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-
     await db.user.logoutUser(decodedUser.id);
     logger.info('User logged out successfully');
-
     return jsonRes(res, 'Logged out', '', {}, 200);
   } catch (e) {
     logger.error('Error in POST /api_v1/logout route', { error: e.message });
@@ -1260,7 +1141,6 @@ const io = new SocketIOServer(httpServer, {
 io.on('connection', (socket) => {
   logger.info('New socket connection established', { socketId: socket.id });
   socket.emit('games_list', Array.from(activeGames.values()));
-
   socket.on('join_game', async ({ game_id, player_id }) => {
     logger.debug('Socket join_game event received');
     const g = activeGames.get(game_id);
@@ -1278,7 +1158,6 @@ io.on('connection', (socket) => {
       io.emit('games_list', Array.from(activeGames.values()));
     }
   });
-
   socket.on('leave_game', async ({ game_id, player_id }) => {
     logger.debug('Socket leave_game event received');
     const g = activeGames.get(game_id);

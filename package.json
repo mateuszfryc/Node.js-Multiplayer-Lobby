@@ -33,7 +33,6 @@
     "express-slow-down": "^2.0.3",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "libsodium-wrappers": "^0.7.15",
     "module-alias": "^2.2.3",
     "nodemailer": "^6.9.16",
     "nodemon": "^3.1.9",

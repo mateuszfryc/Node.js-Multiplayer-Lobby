@@ -31,13 +31,7 @@ GRANT ALL ON SCHEMA public TO your_username;
 Create a table named 'users':
 
 ```sql
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  display_name VARCHAR(20) NOT NULL,
-  display_name VARCHAR(20) NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password VARCHAR(255) NOT NULL
-);
+CREATE TABLE users (id SERIAL PRIMARY KEY, display_name VARCHAR(20) NOT NULL, email VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL);
 ```
 
 Insert a sample user into the 'users' table:
@@ -106,22 +100,18 @@ GRANT ALL ON SCHEMA public TO public;
 Create admin user:
 
 ```sql
-CREATE ROLE <username> WITH LOGIN PASSWORD '<password>';
+CREATE ROLE <username> WITH LOGIN PASSWORD 'password';
 ALTER ROLE <username> WITH SUPERUSER;
 ```
 
 Delete user from users:
 
 ```sql
-DELETE FROM users WHERE user_name = 'mateuszfryc@gmail.com';
+DELETE FROM users WHERE user_name = 'user@mail.com';
 ```
 
 Logout user:
 
 ```sql
-UPDATE users
-SET logged_in = false,
-    refresh_token = NULL,
-    updated_at = NOW()
-WHERE user_name = 'floidmoon@gmail.com';
+UPDATE users SET logged_in = false, refresh_token = NULL, updated_at = NOW() WHERE user_name = 'user@mail.com';
 ```
