@@ -18,20 +18,55 @@ import { Server as SocketIOServer } from 'socket.io';
 import winston from 'winston';
 import 'winston-daily-rotate-file';
 
+/**
+ * -----------------------------
+ * WINSTON LOGGER CONFIGURATION
+ * -----------------------------
+ * This example includes a simple redaction mechanism
+ * for known sensitive keys. You can expand or remove it.
+ */
+const sensitiveKeys = [
+  'password',
+  'token',
+  'refresh_token',
+  'user_name', // Emails
+  'ip', // If you ever store it in the log info
+  'port', // If you ever store it in the log info
+  'Authorization', // In case headers slip in
+  'accessToken',
+  'refreshToken',
+];
+
+// Custom format that redacts sensitive keys
+const redactSensitiveData = winston.format((info) => {
+  for (const key of sensitiveKeys) {
+    if (info[key]) {
+      info[key] = '[REDACTED]';
+    }
+  }
+  return info;
+});
+
 const logger = winston.createLogger({
   level: 'debug', // Default log level
-  format: winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    winston.format.errors({ stack: true }), // Include stack traces for errors
-    winston.format.json() // Log as structured JSON for easier analysis
-  ),
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.SSSZ' }),
+        winston.format.errors({ stack: true }),
+        redactSensitiveData(),
         winston.format.colorize(),
         winston.format.printf(
-          ({ level, message, timestamp, stack }) =>
-            `${timestamp} [${level}]: ${stack || message}`
+          ({ level, message, timestamp, stack, ...meta }) => {
+            const metaString = Object.keys(meta).length
+              ? Object.entries(meta)
+                  .map(([key, value]) => `${key}: "${value}"`)
+                  .join(', ')
+              : '';
+            return `${timestamp} [${level}] ${stack || message} ${
+              metaString ? `| ${metaString}` : ''
+            }`;
+          }
         )
       ),
     }),
@@ -41,6 +76,12 @@ const logger = winston.createLogger({
       zippedArchive: true,
       maxSize: '20m',
       maxFiles: '14d',
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.SSSZ' }),
+        winston.format.errors({ stack: true }),
+        redactSensitiveData(),
+        winston.format.json()
+      ),
     }),
   ],
 });
@@ -113,7 +154,9 @@ const loadEnv = (envDefinitions) => {
         envs[key] = value;
     }
   }
-  console.log('All required environment variables are present and valid.');
+
+  // Use Winston for this info-level log
+  logger.info('All required environment variables are present and valid.');
   return [envs, isProduction];
 };
 
@@ -253,8 +296,7 @@ class Database {
         host: ENVS.DB_HOST,
         dialect: 'postgres',
         protocol: 'postgres',
-        // logging: ENVS.USE_SSL && isProduction ? false : console.log,
-        logging: false,
+        logging: false, // Turn off Sequelize default logging
         dialectOptions: isProduction
           ? {
               ssl: {
@@ -378,7 +420,8 @@ await (async () => {
 
     const existingAdmin = await db.user.findUserByName(ENVS.ADMIN_USER_NAME);
     if (existingAdmin) {
-      logger.info('Admin user already exists.');
+      // Avoid logging the admin's user_name/email
+      logger.info('Admin user already exists');
     } else {
       const adminId = await generateId();
       const hashedPassword = await bcrypt.hash(ENVS.ADMIN_PASSWORD, 10);
@@ -386,9 +429,9 @@ await (async () => {
 
       await db.user.createUser({
         id: adminId,
-        user_name: ENVS.ADMIN_USER_NAME,
+        user_name: ENVS.ADMIN_USER_NAME, // Not logging this
         password: hashedPassword,
-        player_name: ENVS.ADMIN_PLAYER_NAME,
+        player_name: ENVS.ADMIN_PLAYER_NAME, // Safe to store, but not logging here
         role: 'admin',
         logged_in: false,
         created_at: now,
@@ -396,10 +439,10 @@ await (async () => {
         validated_at: now, // Mark as validated immediately
       });
 
-      logger.info('Admin user created successfully.');
+      logger.info('Admin user created successfully');
     }
   } catch (error) {
-    logger.error('Failed to create admin user:', error);
+    logger.error('Failed to create admin user', { error: error.message });
     process.exit(1); // Exit with failure if admin creation fails
   }
 })();
@@ -422,23 +465,18 @@ async function encryptId(id) {
   const ciphertext = sodium.crypto_secretbox_easy(Buffer.from(id), nonce, key);
   const combined = Buffer.concat([nonce, Buffer.from(ciphertext)]);
 
-  // Use a strict URL-safe Base64 encoding
   return combined
-    .toString('base64') // Base64 encode
-    .replace(/\+/g, '-') // Replace "+" with "-"
-    .replace(/\//g, '_') // Replace "/" with "_"
-    .replace(/=+$/, ''); // Remove "=" padding
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 async function decryptId(data) {
   const key = Buffer.from(ENVS.SODIUM_KEY ?? '', 'base64');
   if (!key || key.length !== 32) throw new Error('Sodium key invalid');
 
-  // Decode the URL-safe Base64 back to normal Base64
-  const raw = Buffer.from(
-    data.replace(/-/g, '+').replace(/_/g, '/'), // Undo "-" and "_"
-    'base64'
-  );
+  const raw = Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
   const nonce = raw.slice(0, sodium.crypto_secretbox_NONCEBYTES);
   const ct = raw.slice(sodium.crypto_secretbox_NONCEBYTES);
   const msg = sodium.crypto_secretbox_open_easy(ct, nonce, key);
@@ -467,27 +505,36 @@ function validatePlayerNameFormat(n) {
 }
 
 async function authenticateToken(req, res, next) {
+  // Minimal log: Do not log entire headers (which includes Authorization).
+  logger.info('Authenticating token for incoming request', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('Authenticating token', { headers: req.headers });
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers.authorization; // whell shit
     if (!authHeader) {
       logger.warn('No Authorization header found');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
     const accessToken = authHeader.split(' ')[1];
     if (!accessToken) {
-      logger.warn('No access token found after Bearer scheme');
+      logger.warn('No access token found in Authorization header');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
+
     const decoded = jwt.verify(accessToken, ENVS.JWT_SECRET ?? '');
-    logger.debug('Token decoded successfully', { decoded });
+    // Log only safe aspects of the decoded payload
+    logger.debug('Token decoded successfully', { role: decoded.role });
     req.body.decodedUser = decoded;
     next();
   } catch (e) {
-    logger.error('Failed to authenticate token:', e);
+    logger.error('Failed to authenticate token', { error: e.message });
     return jsonRes(res, '', 'Unauthorized', [], 401);
   }
 }
+
 const smptPort = parseInt(ENVS.SMTP_PORT || '587', 10);
 const transporter = nodemailer.createTransport({
   host: ENVS.SMTP_HOST,
@@ -501,42 +548,50 @@ const transporter = nodemailer.createTransport({
 
 transporter.verify((error, success) => {
   if (error) {
-    console.error('SMTP Connection Error:', error);
+    logger.error('SMTP Connection Error', { error: error.message });
   } else {
-    console.log('SMTP Connection Successful:', success);
+    logger.info('SMTP Connection Successful');
   }
 });
 
 app.post('/api_v1/join', authenticateToken, async (req, res) => {
+  logger.info('POST /api_v1/join called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('POST /api_v1/join called', { body: req.body });
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user for join route', { decoded });
+    logger.debug('Decoded user role for join route', { role: decoded?.role });
+
+    // We do NOT log user_name or password
     const { user_name, password, player_name } = req.body;
+
     if (!decoded || decoded.role !== 'admin') {
-      logger.warn('Request failed: not an admin');
+      logger.warn('Non-admin attempted to create new user');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!user_name || !password || !player_name) {
-      logger.warn('Request failed: missing fields');
+      logger.warn('Missing fields in /api_v1/join');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!validateEmailFormat(user_name)) {
-      logger.warn('Request failed: invalid email format');
+      logger.warn('Invalid email format in /api_v1/join');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!validatePasswordFormat(password)) {
-      logger.warn('Request failed: invalid password format');
+      logger.warn('Invalid password format in /api_v1/join');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!validatePlayerNameFormat(player_name)) {
-      logger.warn('Request failed: invalid player_name format');
+      logger.warn('Invalid player_name format in /api_v1/join');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
 
     const existing = await db.user.findUserByName(user_name);
     if (existing) {
-      logger.warn('Request failed: user already exists');
+      logger.warn('Attempt to create existing user');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
 
@@ -546,9 +601,9 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
 
     await db.user.createUser({
       id: newId,
-      user_name,
+      user_name, // Not logging
       password: hashed,
-      player_name,
+      player_name, // Safe to store
       role: 'player',
       logged_in: false,
       created_at: now,
@@ -556,18 +611,19 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
       validated_at: null,
     });
 
-    logger.info('New user created successfully', { user_name });
+    logger.info('New user created successfully');
 
     const token = await generateId();
     const exp = dayjs().add(1, 'day').toISOString();
     await db.activation.createActivation({
-      user_id: newId,
-      token,
+      user_id: newId, // Not logging
+      token, // Not logging
       created_at: now,
       expires_at: exp,
     });
 
-    logger.debug('Activation token created', { token });
+    // We won't log the token value
+    logger.debug('Activation token created for new user (token redacted)');
 
     try {
       const verificationLink = `${isProduction ? 'https' : 'http'}://${
@@ -580,36 +636,43 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
         text: `Hello! Confirm your email by visiting: ${verificationLink}`,
         html: `<p>Hello!</p><p>Please confirm your email by clicking the link below:</p><p><a href="${verificationLink}">${verificationLink}</a></p>`,
       });
-      logger.info('Verification email sent', { to: user_name });
+      logger.info('Verification email sent (recipient redacted)');
     } catch (emailError) {
-      logger.error('Failed to send verification email:', emailError);
+      logger.error('Failed to send verification email', {
+        error: emailError.message,
+      });
     }
     return jsonRes(res, 'User created', '', {}, 201);
   } catch (e) {
-    logger.error('Error in /api_v1/join route:', e);
+    logger.error('Error in /api_v1/join route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
 app.get('/api_v1/confirm/:token', async (req, res) => {
+  logger.info('GET /api_v1/confirm/:token called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    const token = req.params.token;
-    logger.info('GET /api_v1/confirm/:token called', { token });
+    const token = req.params.token; // Not logging the value
     const now = dayjs().toISOString();
     const act = await db.activation.findByToken(token);
     if (!act) {
-      logger.warn('Invalid token during confirmation');
+      logger.warn('Invalid token used for email confirmation');
       return jsonRes(res, '', 'Invalid token', [], 404);
     }
     if (dayjs(now).isAfter(dayjs(act.expires_at))) {
-      logger.warn('Expired token');
+      logger.warn('Expired token used for email confirmation');
       return jsonRes(res, '', 'Invalid token', [], 400);
     }
     await db.user.updateUser(act.user_id, { validated_at: now });
-    logger.info('Email confirmed', { user_id: act.user_id });
+    logger.info('Email confirmed for a user');
     return jsonRes(res, 'Email confirmed', '', {}, 200);
   } catch (e) {
-    logger.error('Error in /api_v1/confirm/:token route:', e);
+    logger.error('Error in /api_v1/confirm/:token route', { error: e.message });
     return jsonRes(res, '', 'Invalid token', [], 500);
   }
 });
@@ -627,15 +690,21 @@ const loginSpeedLimiter = slowDown({
 });
 
 app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
+  logger.info('POST /api_v1/login called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('POST /api_v1/login called', { body: req.body });
-    const { user_name, password } = req.body;
+    const { user_name, password } = req.body; // Not logging them
+
     if (!user_name || !password) {
       logger.warn('Fields missing in login request');
       return jsonRes(res, '', 'Fields missing', [], 400);
     }
     if (!validateEmailFormat(user_name)) {
-      logger.warn('Invalid input for login');
+      logger.warn('Invalid email input during login');
       return jsonRes(res, '', 'Invalid input', [], 400);
     }
 
@@ -656,7 +725,7 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
       return jsonRes(res, '', 'Email not validated', [], 403);
     }
     if (user.logged_in) {
-      logger.warn('User already logged in', { user_name });
+      logger.warn('User already logged in');
       return jsonRes(res, '', 'Already logged in', [], 409);
     }
 
@@ -678,25 +747,31 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
       updated_at: dayjs().toISOString(),
     });
 
-    logger.info('User logged in successfully', { user_name });
+    logger.info('User logged in successfully');
     return jsonRes(res, '', '', { accessToken, refreshToken }, 200);
   } catch (e) {
-    logger.error('Error in /api_v1/login route:', e);
+    logger.error('Error in /api_v1/login route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
 app.post('/api_v1/refresh', async (req, res) => {
+  logger.info('POST /api_v1/refresh called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('POST /api_v1/refresh called', { body: req.body });
-    const { refreshToken } = req.body;
+    const { refreshToken } = req.body; // Not logging the token
     if (!refreshToken) {
       logger.warn('Refresh token missing');
       return jsonRes(res, '', 'Refresh token missing', [], 400);
     }
 
     const decoded = jwt.verify(refreshToken, ENVS.JWT_REFRESH_SECRET ?? '');
-    logger.debug('Refresh token decoded', { decoded });
+    logger.debug('Refresh token decoded successfully', { role: decoded?.role });
+
     const user = await db.user.findUserById(decoded.id);
     if (!user) {
       logger.warn('User not found for refresh token');
@@ -705,7 +780,7 @@ app.post('/api_v1/refresh', async (req, res) => {
 
     const match = await bcrypt.compare(refreshToken, user.refresh_token ?? '');
     if (!match) {
-      logger.warn('Refresh token does not match stored token');
+      logger.warn('Refresh token mismatch');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
 
@@ -725,7 +800,7 @@ app.post('/api_v1/refresh', async (req, res) => {
       updated_at: dayjs().toISOString(),
     });
 
-    logger.info('Token refreshed successfully', { user_id: user.id });
+    logger.info('Token refreshed successfully');
     return jsonRes(
       res,
       'Token refreshed',
@@ -734,18 +809,23 @@ app.post('/api_v1/refresh', async (req, res) => {
       200
     );
   } catch (e) {
-    logger.error('Error in /api_v1/refresh route:', e);
+    logger.error('Error in /api_v1/refresh route', { error: e.message });
     return jsonRes(res, '', 'Unauthorized', [], 401);
   }
 });
 
 app.patch('/api_v1/user', authenticateToken, async (req, res) => {
+  logger.info('PATCH /api_v1/user called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('PATCH /api_v1/user called', { body: req.body });
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user for user update', { decoded });
+    logger.debug('Decoded user role for user update', { role: decoded?.role });
     if (!decoded || !decoded.id) {
-      logger.warn('Unauthorized update request');
+      logger.warn('Unauthorized update request (no user id)');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
     const { player_name } = req.body;
@@ -757,10 +837,10 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
       player_name,
       updated_at: dayjs().toISOString(),
     });
-    logger.info('User updated successfully', { user_id: decoded.id });
+    logger.info('User updated successfully');
     return jsonRes(res, '', 'Success', {}, 200);
   } catch (e) {
-    logger.error('Error in PATCH /api_v1/user route:', e);
+    logger.error('Error in PATCH /api_v1/user route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
@@ -768,22 +848,35 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
 const activeGames = new Map();
 
 app.get('/api_v1/games', authenticateToken, async (req, res) => {
+  logger.info('GET /api_v1/games called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('GET /api_v1/games called');
     const games = await db.game.findAllGames();
     logger.debug('Fetched games list', { count: games.length });
+    // Return sanitized game data to the client if needed
     return jsonRes(res, '', '', games, 200);
   } catch (e) {
-    logger.error('Error in GET /api_v1/games route:', e);
+    logger.error('Error in GET /api_v1/games route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
 app.post('/api_v1/games', authenticateToken, async (req, res) => {
+  logger.info('POST /api_v1/games called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('POST /api_v1/games called', { body: req.body });
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user for creating game', { decoded });
+    logger.debug('Decoded user role for creating game', {
+      role: decoded?.role,
+    });
     if (!decoded || !decoded.id) {
       logger.warn('Unauthorized attempt to create game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
@@ -799,18 +892,18 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
       private: isPrivate,
       password,
     } = req.body;
+
+    // Do NOT log ip, port, or password
     if (!ip || !port || !game_name || !map_name || !game_mode) {
-      logger.warn(
-        `Missing fields in create game request, ip: ${ip}, port: ${port}, game_name: ${game_name}, map_name: ${map_name}, game_mode: ${game_mode}`
-      );
+      logger.warn('Missing required fields in create game request');
       return jsonRes(res, '', 'Missing fields', [], 400);
     }
     if (!validateIpOrLocalhost(ip)) {
-      logger.warn('Invalid IP address', { ip });
+      logger.warn('Invalid IP address for game creation');
       return jsonRes(res, '', 'Incorrect IP address', [], 400);
     }
     if (!validatePort(port)) {
-      logger.warn('Invalid port number', { port });
+      logger.warn('Invalid port number for game creation');
       return jsonRes(res, '', 'Incorrect port number', [], 400);
     }
     if (
@@ -827,7 +920,7 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
 
     const existing = await db.game.findByIpPort(ip, port);
     if (existing) {
-      logger.debug('Existing game found for this IP:port. Deleting...');
+      logger.debug('Existing game found for IP:Port. Replacing game entry');
       await db.game.deleteGame(existing.id);
       activeGames.delete(existing.id);
     }
@@ -837,9 +930,9 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     const pass = await bcrypt.hash(password, 10);
     const newGame = await db.game.createGame({
       id: newId,
-      ip,
-      port,
-      name: game_name,
+      ip, // Not logged
+      port, // Not logged
+      name: game_name, // Safe to log name in events if desired
       map_name,
       game_mode,
       connected_players: [],
@@ -852,31 +945,42 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     });
     activeGames.set(newId, newGame.toJSON());
 
-    logger.info('Game created successfully', { game_id: newId });
+    logger.info('Game created successfully', {
+      // Example of logging safe fields:
+      game_name,
+      map_name,
+      game_mode,
+      max_players,
+      private: isPrivate,
+    });
+
     io.emit('game_created', newGame);
     io.emit('games_list', Array.from(activeGames.values()));
     return jsonRes(res, 'Game created', '', newGame, 201);
   } catch (e) {
-    logger.error('Error in POST /api_v1/games route:', e);
+    logger.error('Error in POST /api_v1/games route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
 app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
+  logger.info('PUT /api_v1/games/:game_id called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('PUT /api_v1/games/:game_id called', {
-      params: req.params,
-      body: req.body,
-    });
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user for updating game', { decoded });
+    logger.debug('Decoded user role for updating game', {
+      role: decoded?.role,
+    });
     if (!decoded || !decoded.id) {
       logger.warn('Unauthorized attempt to update game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
 
-    const gameId = req.params.game_id;
-    logger.debug('Game ID to update', { gameId });
+    const gameId = req.params.game_id; // Not logging the actual ID value
     const plainId = await decryptId(gameId);
     if (!plainId) {
       logger.warn('Unable to decrypt game_id');
@@ -885,93 +989,101 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
 
     const gameCheck = await db.game.findById(gameId);
     if (!gameCheck) {
-      logger.warn('Game not found for update', { gameId });
+      logger.warn('Game not found for update');
       return jsonRes(res, '', 'Not found', [], 404);
     }
 
     const newData = { ...req.body };
     delete newData.decodedUser;
-    // newData.updated_at = dayjs().toISOString();
-    await db.game.updateGame(gameId, newData);
 
-    logger.debug('Game updated in database', { gameId });
+    await db.game.updateGame(gameId, newData);
+    logger.debug('Game updated in database');
+
     const updated = await db.game.findById(gameId);
     activeGames.set(gameId, updated.toJSON());
 
     io.emit('game_updated', updated);
     io.emit('games_list', Array.from(activeGames.values()));
-    logger.info('Game updated successfully', { gameId });
-
+    logger.info('Game updated successfully');
     return jsonRes(res, '', '', updated, 200);
   } catch (e) {
-    logger.error('Error in PUT /api_v1/games/:game_id route:', e);
+    logger.error('Error in PUT /api_v1/games/:game_id route', {
+      error: e.message,
+    });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
 app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
+  logger.info('DELETE /api_v1/games/:game_id called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('DELETE /api_v1/games/:game_id called', {
-      params: req.params,
-    });
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user for deleting game', { decoded });
+    logger.debug('Decoded user role for deleting game', {
+      role: decoded?.role,
+    });
     if (!decoded || !decoded.id) {
       logger.warn('Unauthorized attempt to delete game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
 
-    const gameId = req.params.game_id;
-    logger.debug('Game ID to delete', { gameId });
+    const gameId = req.params.game_id; // Not logging the actual ID
     const plainId = await decryptId(gameId);
     if (!plainId) {
-      logger.warn('Unable to decrypt game_id');
+      logger.warn('Unable to decrypt game_id for deletion');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
 
     const gameCheck = await db.game.findById(gameId);
     if (!gameCheck) {
-      logger.warn('Game not found for deletion', { gameId });
+      logger.warn('Game not found for deletion');
       return jsonRes(res, '', 'Not found', [], 404);
     }
 
     await db.game.deleteGame(gameId);
     activeGames.delete(gameId);
 
-    logger.info('Game deleted successfully', { gameId });
     io.emit('game_removed', gameId);
     io.emit('games_list', Array.from(activeGames.values()));
+    logger.info('Game deleted successfully');
     return jsonRes(res, 'Game deleted', '', {}, 200);
   } catch (e) {
-    logger.error('Error in DELETE /api_v1/games/:game_id route:', e);
+    logger.error('Error in DELETE /api_v1/games/:game_id route', {
+      error: e.message,
+    });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
 
 app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
+  logger.info('POST /api_v1/games/:game_id/join called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('POST /api_v1/games/:game_id/join called', {
-      params: req.params,
-      body: req.body,
-    });
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user for joining game', { decoded });
+    logger.debug('Decoded user role for joining game', { role: decoded?.role });
     if (!decoded || !decoded.id) {
       logger.warn('Unauthorized attempt to join game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
 
     const gameId = req.params.game_id;
-    logger.debug('Game ID to join', { gameId });
     const plainId = await decryptId(gameId);
     if (!plainId) {
-      logger.warn('Unable to decrypt game_id');
+      logger.warn('Unable to decrypt game_id for join');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
 
     const gameData = activeGames.get(gameId);
     if (!gameData) {
-      logger.warn('Game not found in activeGames', { gameId });
+      logger.warn('Game not found in activeGames for join');
       return jsonRes(res, '', 'Game not found', [], 404);
     }
 
@@ -983,22 +1095,16 @@ app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
       activeGames.set(gameId, gameData);
 
       logger.info('Player joined the game', {
-        gameId,
-        playerId: decoded.id,
-        connectedPlayers: cPlayers,
+        connectedPlayersCount: cPlayers.length,
       });
       io.emit('player_joined', { game_id: gameId, player_id: decoded.id });
       io.emit('games_list', Array.from(activeGames.values()));
     }
-    return jsonRes(
-      res,
-      'Joined game',
-      '',
-      { game_id: gameId, player_id: decoded.id },
-      200
-    );
+    return jsonRes(res, 'Joined game', '', { game_id: gameId }, 200);
   } catch (e) {
-    logger.error('Error in POST /api_v1/games/:game_id/join route:', e);
+    logger.error('Error in POST /api_v1/games/:game_id/join route', {
+      error: e.message,
+    });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
@@ -1007,29 +1113,32 @@ app.post(
   '/api_v1/games/:game_id/leave',
   authenticateToken,
   async (req, res) => {
+    logger.info('POST /api_v1/games/:game_id/leave called', {
+      method: req.method,
+      url: req.url,
+      clientIp: req.ip,
+    });
+
     try {
-      logger.info('POST /api_v1/games/:game_id/leave called', {
-        params: req.params,
-        body: req.body,
-      });
       const decoded = req.body.decodedUser;
-      logger.debug('Decoded user for leaving game', { decoded });
+      logger.debug('Decoded user role for leaving game', {
+        role: decoded?.role,
+      });
       if (!decoded || !decoded.id) {
         logger.warn('Unauthorized attempt to leave game');
         return jsonRes(res, '', 'Unauthorized', [], 401);
       }
 
       const gameId = req.params.game_id;
-      logger.debug('Game ID to leave', { gameId });
       const plainId = await decryptId(gameId);
       if (!plainId) {
-        logger.warn('Unable to decrypt game_id');
+        logger.warn('Unable to decrypt game_id for leave');
         return jsonRes(res, '', 'Invalid game_id', [], 400);
       }
 
       const gameData = activeGames.get(gameId);
       if (!gameData) {
-        logger.warn('Game not found in activeGames', { gameId });
+        logger.warn('Game not found in activeGames for leave');
         return jsonRes(res, '', 'Game not found', [], 404);
       }
 
@@ -1042,39 +1151,38 @@ app.post(
         activeGames.set(gameId, gameData);
 
         logger.info('Player left the game', {
-          gameId,
-          playerId: decoded.id,
-          connectedPlayers: cPlayers,
+          connectedPlayersCount: cPlayers.length,
         });
         io.emit('player_left', { game_id: gameId, player_id: decoded.id });
         io.emit('games_list', Array.from(activeGames.values()));
       }
-      return jsonRes(
-        res,
-        'Left game',
-        '',
-        { game_id: gameId, player_id: decoded.id },
-        200
-      );
+      return jsonRes(res, 'Left game', '', { game_id: gameId }, 200);
     } catch (e) {
-      logger.error('Error in POST /api_v1/games/:game_id/leave route:', e);
+      logger.error('Error in POST /api_v1/games/:game_id/leave route', {
+        error: e.message,
+      });
       return jsonRes(res, '', 'Server error', [], 500);
     }
   }
 );
 
 app.post('/api_v1/logout', authenticateToken, async (req, res) => {
+  logger.info('POST /api_v1/logout called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
   try {
-    logger.info('POST /api_v1/logout called', { body: req.body });
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user for logout', { decoded });
+    logger.debug('Decoded user role for logout', { role: decoded?.role });
     if (!decoded) {
       logger.warn('Unauthorized logout request');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
     const user = await db.user.findUserById(decoded.id);
     if (!user) {
-      logger.warn('User not found during logout', { user_id: decoded.id });
+      logger.warn('User not found during logout');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
 
@@ -1083,10 +1191,10 @@ app.post('/api_v1/logout', authenticateToken, async (req, res) => {
       refresh_token: null,
       updated_at: dayjs().toISOString(),
     });
-    logger.info('User logged out successfully', { user_id: decoded.id });
+    logger.info('User logged out successfully');
     return jsonRes(res, 'Logged out', '', {}, 200);
   } catch (e) {
-    logger.error('Error in POST /api_v1/logout route:', e);
+    logger.error('Error in POST /api_v1/logout route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
@@ -1099,8 +1207,9 @@ const io = new SocketIOServer(httpServer, {
 io.on('connection', (socket) => {
   logger.info('New socket connection established', { socketId: socket.id });
   socket.emit('games_list', Array.from(activeGames.values()));
+
   socket.on('join_game', async ({ game_id, player_id }) => {
-    logger.debug('Socket join_game event', { game_id, player_id });
+    logger.debug('Socket join_game event received');
     const g = activeGames.get(game_id);
     if (!g) return;
     const cPlayers = g.connected_players || [];
@@ -1110,16 +1219,15 @@ io.on('connection', (socket) => {
       await db.game.updateGame(game_id, { connected_players: cPlayers });
       activeGames.set(game_id, g);
       logger.info('Player joined game via socket', {
-        game_id,
-        player_id,
-        connectedPlayers: cPlayers,
+        connectedPlayersCount: cPlayers.length,
       });
       io.emit('player_joined', { game_id, player_id });
       io.emit('games_list', Array.from(activeGames.values()));
     }
   });
+
   socket.on('leave_game', async ({ game_id, player_id }) => {
-    logger.debug('Socket leave_game event', { game_id, player_id });
+    logger.debug('Socket leave_game event received');
     const g = activeGames.get(game_id);
     if (!g) return;
     const cPlayers = g.connected_players || [];
@@ -1130,9 +1238,7 @@ io.on('connection', (socket) => {
       await db.game.updateGame(game_id, { connected_players: cPlayers });
       activeGames.set(game_id, g);
       logger.info('Player left game via socket', {
-        game_id,
-        player_id,
-        connectedPlayers: cPlayers,
+        connectedPlayersCount: cPlayers.length,
       });
       io.emit('player_left', { game_id, player_id });
       io.emit('games_list', Array.from(activeGames.values()));
@@ -1145,7 +1251,11 @@ app.get('/health', (req, res) => {
 });
 
 app.all('*', (req, res) => {
-  console.log(`Unhandled route: ${req.method} ${req.url}`);
+  logger.warn('Unhandled route', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
   res.status(404).send('Route not found');
 });
 
@@ -1156,11 +1266,10 @@ if (isProduction && sslOptions) {
     cert: sslOptions.cert,
   };
   https.createServer(httpsOptions, app).listen(port, () => {
-    logger.info('HTTPS server on ' + port);
+    logger.info(`HTTPS server listening on port ${port}`);
   });
-} //
-else {
+} else {
   httpServer.listen(port, () => {
-    logger.info('HTTP server on ' + port);
+    logger.info(`HTTP server listening on port ${port}`);
   });
 }
