@@ -236,17 +236,38 @@ class UserModel {
   constructor(model) {
     this.model = model;
   }
+
   async createUser(data) {
     return this.model.create(data);
   }
+
   async findUserByName(user_name) {
     return this.model.findOne({ where: { user_name } });
   }
+
   async findUserById(id) {
     return this.model.findOne({ where: { id } });
   }
+
   async updateUser(id, newData) {
     return this.model.update(newData, { where: { id } });
+  }
+
+  async loginUser(user, refreshToken) {
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    await this.updateUser(user.id, {
+      logged_in: true,
+      refresh_token: hashedRefreshToken,
+      updated_at: dayjs().toISOString(),
+    });
+  }
+
+  async logoutUser(userId) {
+    await this.updateUser(userId, {
+      logged_in: false,
+      refresh_token: null,
+      updated_at: dayjs().toISOString(),
+    });
   }
 }
 
@@ -554,8 +575,8 @@ transporter.verify((error, success) => {
   }
 });
 
-app.post('/api_v1/join', authenticateToken, async (req, res) => {
-  logger.info('POST /api_v1/join called', {
+app.post('/api_v1/user', authenticateToken, async (req, res) => {
+  logger.info('POST /api_v1/user called', {
     method: req.method,
     url: req.url,
     clientIp: req.ip,
@@ -563,7 +584,9 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
 
   try {
     const decoded = req.body.decodedUser;
-    logger.debug('Decoded user role for join route', { role: decoded?.role });
+    logger.debug('Decoded user role for register route', {
+      role: decoded?.role,
+    });
 
     // We do NOT log user_name or password
     const { user_name, password, player_name } = req.body;
@@ -573,19 +596,19 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!user_name || !password || !player_name) {
-      logger.warn('Missing fields in /api_v1/join');
+      logger.warn('Missing fields in /api_v1/register');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!validateEmailFormat(user_name)) {
-      logger.warn('Invalid email format in /api_v1/join');
+      logger.warn('Invalid email format in /api_v1/register');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!validatePasswordFormat(password)) {
-      logger.warn('Invalid password format in /api_v1/join');
+      logger.warn('Invalid password format in /api_v1/register');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
     if (!validatePlayerNameFormat(player_name)) {
-      logger.warn('Invalid player_name format in /api_v1/join');
+      logger.warn('Invalid player_name format in /api_v1/register');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
 
@@ -644,7 +667,7 @@ app.post('/api_v1/join', authenticateToken, async (req, res) => {
     }
     return jsonRes(res, 'User created', '', {}, 201);
   } catch (e) {
-    logger.error('Error in /api_v1/join route', { error: e.message });
+    logger.error('Error in /api_v1/user route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
@@ -699,13 +722,14 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
   try {
     const { user_name, password } = req.body; // Not logging them
 
-    if (!user_name || !password) {
+    if (!user_name || !password || !validateEmailFormat(user_name)) {
       logger.warn('Fields missing in login request');
-      return jsonRes(res, '', 'Fields missing', [], 400);
+      return jsonRes(res, '', 'Invalid credentials', [], 400);
     }
+
     if (!validateEmailFormat(user_name)) {
       logger.warn('Invalid email input during login');
-      return jsonRes(res, '', 'Invalid input', [], 400);
+      return jsonRes(res, '', 'Invalid credentials', [], 400);
     }
 
     const user = await db.user.findUserByName(user_name);
@@ -740,12 +764,7 @@ app.post('/api_v1/login', loginLimiter, loginSpeedLimiter, async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-    await db.user.updateUser(user.id, {
-      logged_in: true,
-      refresh_token: hashedRefreshToken,
-      updated_at: dayjs().toISOString(),
-    });
+    await db.user.loginUser(user, refreshToken);
 
     logger.info('User logged in successfully');
     return jsonRes(res, '', '', { accessToken, refreshToken }, 200);
@@ -794,13 +813,9 @@ app.post('/api_v1/refresh', async (req, res) => {
       ENVS.JWT_REFRESH_SECRET ?? '',
       { expiresIn: '7d' }
     );
-    const hashedRefresh = await bcrypt.hash(newRefreshToken, 10);
-    await db.user.updateUser(user.id, {
-      refresh_token: hashedRefresh,
-      updated_at: dayjs().toISOString(),
-    });
-
+    await db.user.loginUser(user, newRefreshToken);
     logger.info('Token refreshed successfully');
+
     return jsonRes(
       res,
       'Token refreshed',
@@ -841,6 +856,47 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
     return jsonRes(res, '', 'Success', {}, 200);
   } catch (e) {
     logger.error('Error in PATCH /api_v1/user route', { error: e.message });
+    return jsonRes(res, '', 'Server error', [], 500);
+  }
+});
+
+app.delete('/api_v1/user/:user_id', authenticateToken, async (req, res) => {
+  logger.info('DELETE /api_v1/user/:user_id called', {
+    method: req.method,
+    url: req.url,
+    clientIp: req.ip,
+  });
+
+  try {
+    const decoded = req.body.decodedUser;
+    logger.debug('Decoded user role for user deletion', {
+      role: decoded?.role,
+    });
+    if (!decoded || decoded.role !== 'admin') {
+      logger.warn('Unauthorized user deletion attempt');
+      return jsonRes(res, '', 'Unauthorized', [], 401);
+    }
+
+    const userId = req.params.user_id; // Not logging the actual ID
+    const plainId = await decryptId(userId);
+    if (!plainId) {
+      logger.warn('Unable to decrypt user_id');
+      return jsonRes(res, '', 'Invalid user_id', [], 400);
+    }
+
+    const user = await db.user.findUserById(userId);
+    if (!user) {
+      logger.warn('User not found for deletion');
+      return jsonRes(res, '', 'Not found', [], 404);
+    }
+
+    await db.user.updateUser(userId, { validated_at: null });
+    logger.info('User deleted successfully');
+    return jsonRes(res, '', 'Success', {}, 200);
+  } catch (e) {
+    logger.error('Error in DELETE /api_v1/user/:user_id route', {
+      error: e.message,
+    });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
@@ -1174,24 +1230,21 @@ app.post('/api_v1/logout', authenticateToken, async (req, res) => {
   });
 
   try {
-    const decoded = req.body.decodedUser;
-    logger.debug('Decoded user role for logout', { role: decoded?.role });
-    if (!decoded) {
-      logger.warn('Unauthorized logout request');
+    const { decodedUser } = req.body;
+    logger.debug('Decoded user role for logout', { role: decodedUser?.role });
+    if (!decodedUser) {
+      logger.warn('Unauthorized');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
-    const user = await db.user.findUserById(decoded.id);
+    const user = await db.user.findUserById(decodedUser.id);
     if (!user) {
       logger.warn('User not found during logout');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
 
-    await db.user.updateUser(decoded.id, {
-      logged_in: false,
-      refresh_token: null,
-      updated_at: dayjs().toISOString(),
-    });
+    await db.user.logoutUser(decodedUser.id);
     logger.info('User logged out successfully');
+
     return jsonRes(res, 'Logged out', '', {}, 200);
   } catch (e) {
     logger.error('Error in POST /api_v1/logout route', { error: e.message });
