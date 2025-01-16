@@ -156,6 +156,7 @@ const [ENVS, isProduction] = loadEnv([
   { key: 'DB_NAME' },
   { key: 'DB_HOST' },
   { key: 'DB_PORT', type: 'number' },
+  { key: 'DB_FORCE_SYNC', type: 'bool' },
   { key: 'SSL_KEY_PATH' },
   { key: 'SSL_CERT_PATH' },
   { key: 'USE_SSL', type: 'bool' },
@@ -167,6 +168,7 @@ const [ENVS, isProduction] = loadEnv([
   { key: 'ADMIN_USER_NAME' },
   { key: 'ADMIN_PASSWORD' },
   { key: 'ADMIN_PLAYER_NAME' },
+  { key: '' },
 ]);
 
 let sslOptions;
@@ -400,7 +402,7 @@ class Database {
     this.activation = new ActivationModel(this.ActivationsTable);
   }
   async init() {
-    if (!isProduction) {
+    if (!isProduction || ENVS.DB_FORCE_SYNC === 'true') {
       await this.sequelize.sync({ alter: true });
     }
   }
