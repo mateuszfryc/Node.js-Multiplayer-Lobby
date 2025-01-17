@@ -415,9 +415,8 @@ class Database {
       logger.error('Database connection failed:', error.message);
       process.exit(1);
     }
-    logger.info(`Should sync: ${ENVS.DB_FORCE_SYNC === 'true'}`);
 
-    if (ENVS.DB_FORCE_SYNC === 'true' || !isProduction) {
+    if (ENVS.DB_FORCE_SYNC || !isProduction) {
       logger.info('Syncing database tables');
       await this.sequelize.sync({ force: true });
     }
