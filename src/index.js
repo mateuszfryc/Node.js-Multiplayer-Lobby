@@ -307,6 +307,9 @@ class Database {
         dialect: 'postgres',
         protocol: 'postgres',
         logging: false,
+        define: {
+          schema: 'public',
+        },
         dialectOptions: isProduction
           ? {
               ssl: {
@@ -405,18 +408,17 @@ class Database {
     this.activation = new ActivationModel(this.ActivationsTable);
   }
   async init() {
+    try {
+      await this.sequelize.authenticate();
+      logger.info('Database connection successful.');
+    } catch (error) {
+      logger.error('Database connection failed:', error.message);
+      process.exit(1);
+    }
+
     if (ENVS.DB_FORCE_SYNC === 'true' || !isProduction) {
       logger.info('Syncing database tables');
       await this.sequelize.sync({ force: true });
-    }
-  }
-  async seedUsers(usersSeed) {
-    if (!usersSeed || !Array.isArray(usersSeed) || usersSeed.length === 0) {
-      throw new Error('Invalid users seed data');
-    }
-    await this.sequelize.sync({ force: true });
-    for (const user of usersSeed) {
-      await this.user.createUser(user);
     }
   }
 }
