@@ -415,6 +415,7 @@ class Database {
       logger.error('Database connection failed:', error.message);
       process.exit(1);
     }
+    logger.info(`Should sync: ${ENVS.DB_FORCE_SYNC === 'true'}`);
 
     if (ENVS.DB_FORCE_SYNC === 'true' || !isProduction) {
       logger.info('Syncing database tables');
