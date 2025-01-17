@@ -407,7 +407,7 @@ class Database {
   async init() {
     if (ENVS.DB_FORCE_SYNC === 'true' || !isProduction) {
       logger.info('Syncing database tables');
-      await this.sequelize.sync({ alter: true, force: true });
+      await this.sequelize.sync({ force: true });
     }
   }
   async seedUsers(usersSeed) {
