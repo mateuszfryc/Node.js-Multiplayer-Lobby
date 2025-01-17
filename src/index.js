@@ -564,12 +564,12 @@ app.post('/api_v1/user', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const decoded = req.body.decodedUser;
+    const user = req.body.decodedUser;
     logger.debug('Decoded user role for register route', {
-      role: decoded?.role,
+      role: user?.role,
     });
     const { user_name, password, player_name } = req.body;
-    if (!decoded || decoded.role !== 'admin') {
+    if (!user || user.role !== 'admin') {
       logger.warn('Non-admin attempted to create new user');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
@@ -789,9 +789,9 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const decoded = req.body.decodedUser;
-    logger.debug('Decoded user role for user update', { role: decoded?.role });
-    if (!decoded || !decoded.id) {
+    const user = req.body.decodedUser;
+    logger.debug('Decoded user role for user update', { role: user?.role });
+    if (!user || !user.id) {
       logger.warn('Unauthorized update request (no user id)');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
@@ -800,7 +800,7 @@ app.patch('/api_v1/user', authenticateToken, async (req, res) => {
       logger.warn('Invalid player_name in update request');
       return jsonRes(res, '', 'Invalid player_name', [], 400);
     }
-    await db.user.updateUser(decoded.id, {
+    await db.user.updateUser(user.id, {
       player_name,
       updated_at: dayjs().toISOString(),
     });
@@ -819,11 +819,11 @@ app.delete('/api_v1/user/:user_id', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const decoded = req.body.decodedUser;
+    const currentUser = req.body.decodedUser;
     logger.debug('Decoded user role for user deletion', {
-      role: decoded?.role,
+      role: currentUser?.role,
     });
-    if (!decoded || decoded.role !== 'admin') {
+    if (!currentUser || currentUser.role !== 'admin') {
       logger.warn('Unauthorized user deletion attempt');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
@@ -954,17 +954,17 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const decoded = req.body.decodedUser;
+    const decodedUser = req.body.decodedUser;
     logger.debug('Decoded user role for updating game', {
-      role: decoded?.role,
+      role: decodedUser?.role,
     });
-    if (!decoded || !decoded.id) {
+    if (!decodedUser || !decodedUser.id) {
       logger.warn('Unauthorized attempt to update game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
     const gameId = req.params.game_id;
-    const plainId = gameId;
-    if (!plainId) {
+    const plainGameId = gameId;
+    if (!plainGameId) {
       logger.warn('Unable to decrypt game_id');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
@@ -977,12 +977,12 @@ app.put('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     delete newData.decodedUser;
     await db.game.updateGame(gameId, newData);
     logger.debug('Game updated in database');
-    const updated = await db.game.findById(gameId);
-    activeGames.set(gameId, updated.toJSON());
-    io.emit('game_updated', updated);
+    const updatedGame = await db.game.findById(gameId);
+    activeGames.set(gameId, updatedGame.toJSON());
+    io.emit('game_updated', updatedGame);
     io.emit('games_list', Array.from(activeGames.values()));
     logger.info('Game updated successfully');
-    return jsonRes(res, '', '', updated, 200);
+    return jsonRes(res, '', '', updatedGame, 200);
   } catch (e) {
     logger.error('Error in PUT /api_v1/games/:game_id route', {
       error: e.message,
@@ -998,17 +998,17 @@ app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const decoded = req.body.decodedUser;
+    const decodedUser = req.body.decodedUser;
     logger.debug('Decoded user role for deleting game', {
-      role: decoded?.role,
+      role: decodedUser?.role,
     });
-    if (!decoded || !decoded.id) {
+    if (!decodedUser || !decodedUser.id) {
       logger.warn('Unauthorized attempt to delete game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
     const gameId = req.params.game_id;
-    const plainId = gameId;
-    if (!plainId) {
+    const plainGameId = gameId;
+    if (!plainGameId) {
       logger.warn('Unable to decrypt game_id for deletion');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
@@ -1016,6 +1016,10 @@ app.delete('/api_v1/games/:game_id', authenticateToken, async (req, res) => {
     if (!gameCheck) {
       logger.warn('Game not found for deletion');
       return jsonRes(res, '', 'Not found', [], 404);
+    }
+    if (gameCheck.owner_id !== decodedUser.id) {
+      logger.warn('Unauthorized attempt to delete game');
+      return jsonRes(res, '', 'Unauthorized', [], 401);
     }
     await db.game.deleteGame(gameId);
     activeGames.delete(gameId);
@@ -1038,15 +1042,17 @@ app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const user = req.body.decodedUser;
-    logger.debug('Decoded user role for joining game', { role: user?.role });
-    if (!user || !user.id) {
+    const decodedUser = req.body.decodedUser;
+    logger.debug('Decoded user role for joining game', {
+      role: decodedUser?.role,
+    });
+    if (!decodedUser || !decodedUser.id) {
       logger.warn('Unauthorized attempt to join game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
     const gameId = req.params.game_id;
-    const plainId = gameId;
-    if (!plainId) {
+    const plainGameId = gameId;
+    if (!plainGameId) {
       logger.warn('Unable to decrypt game_id for join');
       return jsonRes(res, '', 'Invalid game_id', [], 400);
     }
@@ -1055,26 +1061,26 @@ app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
       logger.warn('Game not found in activeGames for join');
       return jsonRes(res, '', 'Game not found', [], 404);
     }
-    if (gameData.owner_id === user.id) {
-      logger.warn('Player tried to join game hosted by him self.');
+    if (gameData.owner_id === decodedUser.id) {
+      logger.warn('Player tried to join game hosted by himself.');
       return jsonRes(
         res,
         '',
-        'Player cannot join game hosted by him self.',
+        'Player cannot join game hosted by himself.',
         [],
         404
       );
     }
-    const cPlayers = gameData.connected_players || [];
-    if (!cPlayers.includes(user.id)) {
-      cPlayers.push(user.id);
-      gameData.connected_players = cPlayers;
-      await db.game.updateGame(gameId, { connected_players: cPlayers });
+    const connectedPlayers = gameData.connected_players || [];
+    if (!connectedPlayers.includes(decodedUser.id)) {
+      connectedPlayers.push(decodedUser.id);
+      gameData.connected_players = connectedPlayers;
+      await db.game.updateGame(gameId, { connected_players: connectedPlayers });
       activeGames.set(gameId, gameData);
       logger.info('Player joined the game', {
-        connectedPlayersCount: cPlayers.length,
+        connectedPlayersCount: connectedPlayers.length,
       });
-      io.emit('player_joined', { game_id: gameId, player_id: user.id });
+      io.emit('player_joined', { game_id: gameId, player_id: decodedUser.id });
       io.emit('games_list', Array.from(activeGames.values()));
     }
     return jsonRes(res, 'Joined game', '', { game_id: gameId }, 200);
@@ -1105,8 +1111,8 @@ app.post(
         return jsonRes(res, '', 'Unauthorized', [], 401);
       }
       const gameId = req.params.game_id;
-      const plainId = gameId;
-      if (!plainId) {
+      const plainGameId = gameId;
+      if (!plainGameId) {
         logger.warn('Unable to decrypt game_id for leave');
         return jsonRes(res, '', 'Invalid game_id', [], 400);
       }
@@ -1116,24 +1122,26 @@ app.post(
         return jsonRes(res, '', 'Game not found', [], 404);
       }
       if (gameData.owner_id === user.id) {
-        logger.warn('Player tried to leave the game hosted by him self.');
+        logger.warn('Player tried to leave the game hosted by himself.');
         return jsonRes(
           res,
           '',
-          'Player cannot leave the game hosted by him self.',
+          'Player cannot leave the game hosted by himself.',
           [],
           404
         );
       }
-      const cPlayers = gameData.connected_players || [];
-      const idx = cPlayers.indexOf(user.id);
-      if (idx > -1) {
-        cPlayers.splice(idx, 1);
-        gameData.connected_players = cPlayers;
-        await db.game.updateGame(gameId, { connected_players: cPlayers });
+      const connectedPlayers = gameData.connected_players || [];
+      const playerIndex = connectedPlayers.indexOf(user.id);
+      if (playerIndex > -1) {
+        connectedPlayers.splice(playerIndex, 1);
+        gameData.connected_players = connectedPlayers;
+        await db.game.updateGame(gameId, {
+          connected_players: connectedPlayers,
+        });
         activeGames.set(gameId, gameData);
         logger.info('Player left the game', {
-          connectedPlayersCount: cPlayers.length,
+          connectedPlayersCount: connectedPlayers.length,
         });
         io.emit('player_left', { game_id: gameId, player_id: user.id });
         io.emit('games_list', Array.from(activeGames.values()));
@@ -1173,8 +1181,10 @@ app.post('/api_v1/logout', authenticateToken, async (req, res) => {
     await db.user.logoutUser(decodedUser.id);
     logger.info('User logged out successfully');
     return jsonRes(res, 'Logged out', '', {}, 200);
-  } catch (e) {
-    logger.error('Error in POST /api_v1/logout route', { error: e.message });
+  } catch (error) {
+    logger.error('Error in POST /api_v1/logout route', {
+      error: error.message,
+    });
     return jsonRes(res, '', 'Server error', [], 500);
   }
 });
@@ -1189,16 +1199,18 @@ io.on('connection', (socket) => {
   socket.emit('games_list', Array.from(activeGames.values()));
   socket.on('join_game', async ({ game_id, player_id }) => {
     logger.debug('Socket join_game event received');
-    const g = activeGames.get(game_id);
-    if (!g) return;
-    const cPlayers = g.connected_players || [];
-    if (!cPlayers.includes(player_id)) {
-      cPlayers.push(player_id);
-      g.connected_players = cPlayers;
-      await db.game.updateGame(game_id, { connected_players: cPlayers });
-      activeGames.set(game_id, g);
+    const game = activeGames.get(game_id);
+    if (!game) return;
+    const connectedPlayers = game.connected_players || [];
+    if (!connectedPlayers.includes(player_id)) {
+      connectedPlayers.push(player_id);
+      game.connected_players = connectedPlayers;
+      await db.game.updateGame(game_id, {
+        connected_players: connectedPlayers,
+      });
+      activeGames.set(game_id, game);
       logger.info('Player joined game via socket', {
-        connectedPlayersCount: cPlayers.length,
+        connectedPlayersCount: connectedPlayers.length,
       });
       io.emit('player_joined', { game_id, player_id });
       io.emit('games_list', Array.from(activeGames.values()));
@@ -1206,17 +1218,19 @@ io.on('connection', (socket) => {
   });
   socket.on('leave_game', async ({ game_id, player_id }) => {
     logger.debug('Socket leave_game event received');
-    const g = activeGames.get(game_id);
-    if (!g) return;
-    const cPlayers = g.connected_players || [];
-    const ix = cPlayers.indexOf(player_id);
-    if (ix > -1) {
-      cPlayers.splice(ix, 1);
-      g.connected_players = cPlayers;
-      await db.game.updateGame(game_id, { connected_players: cPlayers });
-      activeGames.set(game_id, g);
+    const game = activeGames.get(game_id);
+    if (!game) return;
+    const connectedPlayers = game.connected_players || [];
+    const playerIndex = connectedPlayers.indexOf(player_id);
+    if (playerIndex > -1) {
+      connectedPlayers.splice(playerIndex, 1);
+      game.connected_players = connectedPlayers;
+      await db.game.updateGame(game_id, {
+        connected_players: connectedPlayers,
+      });
+      activeGames.set(game_id, game);
       logger.info('Player left game via socket', {
-        connectedPlayersCount: cPlayers.length,
+        connectedPlayersCount: connectedPlayers.length,
       });
       io.emit('player_left', { game_id, player_id });
       io.emit('games_list', Array.from(activeGames.values()));
