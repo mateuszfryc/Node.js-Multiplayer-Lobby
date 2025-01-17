@@ -99,6 +99,7 @@ const loadEnv = (envDefinitions) => {
     base64Length,
     filePath,
     type,
+    log,
   } of envDefinitions) {
     const value = process.env[key];
     if (!value)
@@ -125,6 +126,9 @@ const loadEnv = (envDefinitions) => {
         );
       }
     }
+    if (log) {
+      logger.info(`"${key}": ${value}.`);
+    }
     switch (type) {
       case 'bool':
         envs[key] = parseBoolean(value);
@@ -148,7 +152,7 @@ const loadEnv = (envDefinitions) => {
 };
 
 const [ENVS, isProduction] = loadEnv([
-  { key: 'PORT' },
+  { key: 'PORT', log: true },
   { key: 'JWT_SECRET', minLength: 32 },
   { key: 'JWT_REFRESH_SECRET', minLength: 32 },
   { key: 'DB_USER' },
@@ -156,7 +160,7 @@ const [ENVS, isProduction] = loadEnv([
   { key: 'DB_NAME' },
   { key: 'DB_HOST' },
   { key: 'DB_PORT', type: 'number' },
-  { key: 'DB_FORCE_SYNC', type: 'bool' },
+  { key: 'DB_FORCE_SYNC', type: 'bool', log: true },
   { key: 'SSL_KEY_PATH' },
   { key: 'SSL_CERT_PATH' },
   { key: 'USE_SSL', type: 'bool' },
@@ -401,7 +405,8 @@ class Database {
     this.activation = new ActivationModel(this.ActivationsTable);
   }
   async init() {
-    if (!isProduction || ENVS.DB_FORCE_SYNC === 'true') {
+    if (ENVS.DB_FORCE_SYNC === 'true' || !isProduction) {
+      logger.info('Syncing database tables');
       await this.sequelize.sync({ alter: true });
     }
   }
