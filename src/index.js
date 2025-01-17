@@ -175,7 +175,7 @@ const [ENVS, isProduction] = loadEnv([
 ]);
 
 let sslOptions;
-if (ENVS.USE_SSL === 'true') {
+if (ENVS.USE_SSL) {
   try {
     sslOptions = {
       key: fs.readFileSync(ENVS.SSL_KEY_PATH),
@@ -222,12 +222,32 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX =
   /^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[!@#$%^&*\+\-\?,])[A-Za-z0-9!@#$%^&*\+\-\?,]{8,}$/;
 const PLAYER_NAME_REGEX = /^[A-Za-z0-9!@#$%^&*\+\-\?,]{3,16}$/;
+const activeGames = new Map();
 
 class UserModel {
   constructor(model) {
     this.model = model;
   }
-  async createUser(data) {
+  async create(
+    user_name,
+    password,
+    player_name,
+    role = 'player',
+    validated = false
+  ) {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const now = dayjs().toISOString();
+    const data = {
+      id: uuidv4(),
+      user_name,
+      password: hashedPassword,
+      player_name,
+      role,
+      logged_in: false,
+      created_at: now,
+      updated_at: now,
+      validated_at: validated ? now : null,
+    };
     return this.model.create(data);
   }
   async findUserByName(user_name) {
@@ -273,7 +293,35 @@ class GameModel {
   async findById(id) {
     return this.model.findOne({ where: { id } });
   }
-  async createGame(data) {
+  async create(
+    ownerId,
+    ip,
+    port,
+    name,
+    map_name,
+    game_mode,
+    max_players = 8,
+    isPrivate = false,
+    pass = null
+  ) {
+    const now = dayjs().toISOString();
+    const password = pass ? await bcrypt.hash(pass, 10) : '';
+    const data = {
+      id: uuidv4(),
+      owner_id: ownerId,
+      ip,
+      port,
+      name,
+      map_name,
+      game_mode,
+      connected_players: [],
+      max_players,
+      private: isPrivate,
+      password,
+      ping: 0,
+      created_at: now,
+      updated_at: now,
+    };
     return this.model.create(data);
   }
   async updateGame(id, newData) {
@@ -322,21 +370,14 @@ class Database {
     );
     this.UsersTable = this.sequelize.define(
       'user',
+      // prettier-ignore
       {
-        id: {
-          type: DataTypes.UUID,
-          defaultValue: DataTypes.UUIDV4,
-          primaryKey: true,
-        },
+        id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
         user_name: { type: DataTypes.STRING, unique: true, allowNull: false },
         password: { type: DataTypes.STRING, allowNull: false },
         player_name: { type: DataTypes.STRING, allowNull: false },
         role: { type: DataTypes.STRING, allowNull: false },
-        logged_in: {
-          type: DataTypes.BOOLEAN,
-          allowNull: false,
-          defaultValue: false,
-        },
+        logged_in: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
         validated_at: { type: DataTypes.DATE, allowNull: true },
         refresh_token: { type: DataTypes.TEXT, allowNull: true },
       },
@@ -349,33 +390,19 @@ class Database {
     );
     this.GamesTable = this.sequelize.define(
       'game',
+      // prettier-ignore
       {
-        id: {
-          type: DataTypes.UUID,
-          defaultValue: DataTypes.UUIDV4,
-          primaryKey: true,
-        },
+        id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+        owner_id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, allowNull: false },
         ip: { type: DataTypes.STRING, allowNull: false },
         port: { type: DataTypes.INTEGER, allowNull: false },
         name: { type: DataTypes.STRING, allowNull: false },
         map_name: { type: DataTypes.STRING, allowNull: false },
         game_mode: { type: DataTypes.STRING, allowNull: false },
-        connected_players: {
-          type: DataTypes.ARRAY(DataTypes.STRING),
-          allowNull: false,
-          defaultValue: [],
-        },
+        connected_players: { type: DataTypes.ARRAY(DataTypes.STRING), allowNull: false, defaultValue: [] },
         max_players: { type: DataTypes.INTEGER, allowNull: false },
-        private: {
-          type: DataTypes.BOOLEAN,
-          allowNull: false,
-          defaultValue: false,
-        },
-        password: {
-          type: DataTypes.STRING,
-          allowNull: false,
-          defaultValue: '',
-        },
+        private: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+        password: { type: DataTypes.STRING, allowNull: false, defaultValue: '' },
         ping: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
       },
       {
@@ -416,49 +443,47 @@ class Database {
       process.exit(1);
     }
 
-    if (ENVS.DB_FORCE_SYNC || !isProduction) {
+    if (ENVS.DB_FORCE_SYNC) {
       logger.info('Syncing database tables');
       await this.sequelize.sync({ force: true });
     }
+
+    try {
+      if (
+        !ENVS.ADMIN_USER_NAME ||
+        !ENVS.ADMIN_PASSWORD ||
+        !ENVS.ADMIN_PLAYER_NAME
+      ) {
+        throw new Error('Admin user environment variables are missing.');
+      }
+      const existingAdmin = await db.user.findUserByName(ENVS.ADMIN_USER_NAME);
+      if (existingAdmin) {
+        logger.info('Admin user already exists');
+      } else {
+        await db.user.create(
+          ENVS.ADMIN_USER_NAME,
+          ENVS.ADMIN_PASSWORD,
+          ENVS.ADMIN_PLAYER_NAME,
+          'admin',
+          true
+        );
+        logger.info('Admin user created successfully');
+      }
+    } catch (error) {
+      logger.error('Failed to create admin user', { error: error.message });
+      process.exit(1);
+    }
+
+    const games = await this.game.findAllGames();
+    // if before the server went down there where any active games push them into activeGames array
+    games.forEach((game) => {
+      activeGames.set(game.id, game.toJSON());
+    });
   }
 }
 
 const db = new Database();
 await db.init();
-await (async () => {
-  try {
-    if (
-      !ENVS.ADMIN_USER_NAME ||
-      !ENVS.ADMIN_PASSWORD ||
-      !ENVS.ADMIN_PLAYER_NAME
-    ) {
-      throw new Error('Admin user environment variables are missing.');
-    }
-    const existingAdmin = await db.user.findUserByName(ENVS.ADMIN_USER_NAME);
-    if (existingAdmin) {
-      logger.info('Admin user already exists');
-    } else {
-      const adminId = uuidv4();
-      const hashedPassword = await bcrypt.hash(ENVS.ADMIN_PASSWORD, 10);
-      const now = dayjs().toISOString();
-      await db.user.createUser({
-        id: adminId,
-        user_name: ENVS.ADMIN_USER_NAME,
-        password: hashedPassword,
-        player_name: ENVS.ADMIN_PLAYER_NAME,
-        role: 'admin',
-        logged_in: false,
-        created_at: now,
-        updated_at: now,
-        validated_at: now,
-      });
-      logger.info('Admin user created successfully');
-    }
-  } catch (error) {
-    logger.error('Failed to create admin user', { error: error.message });
-    process.exit(1);
-  }
-})();
 
 function validatePort(port) {
   const parsed = parseInt(port, 10);
@@ -569,25 +594,18 @@ app.post('/api_v1/user', authenticateToken, async (req, res) => {
       logger.warn('Attempt to create existing user');
       return jsonRes(res, '', 'Request failed', [], 400);
     }
-    const hashed = await bcrypt.hash(password, 10);
-    const newId = uuidv4();
     const now = dayjs().toISOString();
-    await db.user.createUser({
-      id: newId,
+    const newUser = await db.user.create(
       user_name,
-      password: hashed,
+      password,
       player_name,
-      role: 'player',
-      logged_in: false,
-      created_at: now,
-      updated_at: now,
-      validated_at: null,
-    });
+      'player'
+    );
     logger.info('New user created successfully');
     const token = uuidv4();
     const exp = dayjs().add(1, 'day').toISOString();
     await db.activation.createActivation({
-      user_id: newId,
+      user_id: newUser.id,
       token,
       created_at: now,
       expires_at: exp,
@@ -610,7 +628,13 @@ app.post('/api_v1/user', authenticateToken, async (req, res) => {
         error: emailError.message,
       });
     }
-    return jsonRes(res, 'User created', '', { id: newId, player_name }, 201);
+    return jsonRes(
+      res,
+      'User created',
+      '',
+      { id: newUser.id, player_name },
+      201
+    );
   } catch (e) {
     logger.error('Error in /api_v1/user route', { error: e.message });
     return jsonRes(res, '', 'Server error', [], 500);
@@ -825,8 +849,6 @@ app.delete('/api_v1/user/:user_id', authenticateToken, async (req, res) => {
   }
 });
 
-const activeGames = new Map();
-
 app.get('/api_v1/games', authenticateToken, async (req, res) => {
   logger.info('GET /api_v1/games called', {
     method: req.method,
@@ -850,11 +872,11 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const decoded = req.body.decodedUser;
+    const user = req.body.decodedUser;
     logger.debug('Decoded user role for creating game', {
-      role: decoded?.role,
+      role: user?.role,
     });
-    if (!decoded || !decoded.id) {
+    if (!user || !user.id) {
       logger.warn('Unauthorized attempt to create game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
@@ -890,32 +912,25 @@ app.post('/api_v1/games', authenticateToken, async (req, res) => {
     }
     if (!max_players) max_players = 8;
     if (!isPrivate) isPrivate = false;
-    if (!password) password = '';
     const existing = await db.game.findByIpPort(ip, port);
     if (existing) {
       logger.debug('Existing game found for IP:Port. Replacing game entry');
       await db.game.deleteGame(existing.id);
       activeGames.delete(existing.id);
     }
-    const newId = uuidv4();
-    const now = dayjs().toISOString();
-    const pass = await bcrypt.hash(password, 10);
-    const newGame = await db.game.createGame({
-      id: newId,
+
+    const newGame = await db.game.create(
+      user.id,
       ip,
       port,
-      name: game_name,
+      game_name,
       map_name,
       game_mode,
-      connected_players: [],
       max_players,
-      private: isPrivate,
-      password: pass,
-      ping: 0,
-      created_at: now,
-      updated_at: now,
-    });
-    activeGames.set(newId, newGame.toJSON());
+      isPrivate,
+      password
+    );
+    activeGames.set(newGame.id, newGame.toJSON());
     logger.info('Game created successfully', {
       game_name,
       map_name,
@@ -1023,9 +1038,9 @@ app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
     clientIp: req.ip,
   });
   try {
-    const decoded = req.body.decodedUser;
-    logger.debug('Decoded user role for joining game', { role: decoded?.role });
-    if (!decoded || !decoded.id) {
+    const user = req.body.decodedUser;
+    logger.debug('Decoded user role for joining game', { role: user?.role });
+    if (!user || !user.id) {
       logger.warn('Unauthorized attempt to join game');
       return jsonRes(res, '', 'Unauthorized', [], 401);
     }
@@ -1040,16 +1055,26 @@ app.post('/api_v1/games/:game_id/join', authenticateToken, async (req, res) => {
       logger.warn('Game not found in activeGames for join');
       return jsonRes(res, '', 'Game not found', [], 404);
     }
+    if (gameData.owner_id === user.id) {
+      logger.warn('Player tried to join game hosted by him self.');
+      return jsonRes(
+        res,
+        '',
+        'Player cannot join game hosted by him self.',
+        [],
+        404
+      );
+    }
     const cPlayers = gameData.connected_players || [];
-    if (!cPlayers.includes(decoded.id)) {
-      cPlayers.push(decoded.id);
+    if (!cPlayers.includes(user.id)) {
+      cPlayers.push(user.id);
       gameData.connected_players = cPlayers;
       await db.game.updateGame(gameId, { connected_players: cPlayers });
       activeGames.set(gameId, gameData);
       logger.info('Player joined the game', {
         connectedPlayersCount: cPlayers.length,
       });
-      io.emit('player_joined', { game_id: gameId, player_id: decoded.id });
+      io.emit('player_joined', { game_id: gameId, player_id: user.id });
       io.emit('games_list', Array.from(activeGames.values()));
     }
     return jsonRes(res, 'Joined game', '', { game_id: gameId }, 200);
@@ -1071,11 +1096,11 @@ app.post(
       clientIp: req.ip,
     });
     try {
-      const decoded = req.body.decodedUser;
+      const user = req.body.decodedUser;
       logger.debug('Decoded user role for leaving game', {
-        role: decoded?.role,
+        role: user?.role,
       });
-      if (!decoded || !decoded.id) {
+      if (!user || !user.id) {
         logger.warn('Unauthorized attempt to leave game');
         return jsonRes(res, '', 'Unauthorized', [], 401);
       }
@@ -1090,8 +1115,18 @@ app.post(
         logger.warn('Game not found in activeGames for leave');
         return jsonRes(res, '', 'Game not found', [], 404);
       }
+      if (gameData.owner_id === user.id) {
+        logger.warn('Player tried to leave the game hosted by him self.');
+        return jsonRes(
+          res,
+          '',
+          'Player cannot leave the game hosted by him self.',
+          [],
+          404
+        );
+      }
       const cPlayers = gameData.connected_players || [];
-      const idx = cPlayers.indexOf(decoded.id);
+      const idx = cPlayers.indexOf(user.id);
       if (idx > -1) {
         cPlayers.splice(idx, 1);
         gameData.connected_players = cPlayers;
@@ -1100,10 +1135,14 @@ app.post(
         logger.info('Player left the game', {
           connectedPlayersCount: cPlayers.length,
         });
-        io.emit('player_left', { game_id: gameId, player_id: decoded.id });
+        io.emit('player_left', { game_id: gameId, player_id: user.id });
         io.emit('games_list', Array.from(activeGames.values()));
+        return jsonRes(res, 'Left game', '', { game_id: gameId }, 200);
       }
-      return jsonRes(res, 'Left game', '', { game_id: gameId }, 200);
+      logger.warn(
+        `Player id: ${user.id} that is not part of the game: ${gameData.id} tried to leave that game.`
+      );
+      return jsonRes(res, 'Bad request', '', {}, 404);
     } catch (e) {
       logger.error('Error in POST /api_v1/games/:game_id/leave route', {
         error: e.message,
