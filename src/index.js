@@ -61,17 +61,6 @@ const envs = await loadEnv([
   { key: 'NODE_ENV' },
 ]);
 
-let sslOptions;
-if (envs.USE_SSL) {
-  try {
-    sslOptions = {
-      key: fs.readFileSync(envs.SSL_KEY_PATH),
-      cert: fs.readFileSync(envs.SSL_CERT_PATH),
-    };
-  } catch (err) {
-    throw new Error(`Failed to load SSL certificates: ${err.message}`);
-  }
-}
 const app = express();
 app.use(express.json({ strict: true }));
 app.use(
@@ -107,7 +96,7 @@ const database = new DatabaseManager(
   activationsSchema
 );
 const activeGames = new Map();
-await database.init(envs, activeGames);
+await database.init(database, envs, activeGames);
 const mailer = transporter(envs);
 const httpServer = createServer(app);
 const websockets = new SocketIOServer(httpServer, {
@@ -122,13 +111,14 @@ const services = {
   activeGames,
 };
 
+const baseUrl = '/api_v1';
 // prettier-ignore
 [
   authRoutes,
   usersRoutes,
   gamesRoutes,
 ]
-.forEach((initRoutes) => app.use(initRoutes('/api_v1', services)));
+.forEach((initRoutes) => app.use(initRoutes(baseUrl, services)));
 
 websockets.use(websocketsJwtAuth(envs));
 websockets.on('connection', (socket) => {
@@ -154,15 +144,27 @@ app.all('*', (req, res) => {
   res.status(404).send('Route not found');
 });
 
-if (envs.USE_SSL && sslOptions) {
+if (envs.USE_SSL) {
+  let sslOptions;
+  try {
+    sslOptions = {
+      key: fs.readFileSync(envs.SSL_KEY_PATH),
+      cert: fs.readFileSync(envs.SSL_CERT_PATH),
+    };
+  } catch (err) {
+    throw new Error(`Failed to load SSL certificates: ${err.message}`);
+  }
+
   const httpsOptions = {
     key: sslOptions.key,
     cert: sslOptions.cert,
   };
+
   https.createServer(httpsOptions, app).listen(envs.PORT, () => {
     logger.info(`HTTPS server listening on port ${envs.PORT}`);
   });
-} else {
+} //
+else {
   httpServer.listen(envs.PORT, () => {
     logger.info(`HTTP server listening on port ${envs.PORT}`);
   });

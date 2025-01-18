@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { authenticateToken } from '#auth/middleware/auth_jwt.js';
+import { authenticateToken } from '#auth/middleware/authenticateToken.js';
 import { createGameAction } from './actions/create_game_action.js';
 import { deleteGameAction } from './actions/delete_game_action.js';
 import { getAllGamesAction } from './actions/get_all_games_action.js';

@@ -6,14 +6,14 @@ import { ActivationModel } from './models/activation_mode.js';
 
 /* This class abstracts away database implementation. */
 export class DatabaseManager {
-  constructor(ENVS, inUsersSchema, inGamesSchema, inActivationsSchema) {
-    const isProduction = ENVS.NODE_ENV === 'production';
+  constructor(envs, inUsersSchema, inGamesSchema, inActivationsSchema) {
+    const isProduction = envs.NODE_ENV === 'production';
     this.sequelize = new Sequelize(
-      ENVS.DB_NAME,
-      ENVS.DB_USER,
-      ENVS.DB_PASSWORD,
+      envs.DB_NAME,
+      envs.DB_USER,
+      envs.DB_PASSWORD,
       {
-        host: ENVS.DB_HOST,
+        host: envs.DB_HOST,
         dialect: 'postgres',
         protocol: 'postgres',
         logging: false,
@@ -35,7 +35,7 @@ export class DatabaseManager {
     this.activation = new ActivationModel(inActivationsSchema(this.sequelize));
   }
 
-  async init(ENVS, activeGames) {
+  async init(database, envs, activeGames) {
     try {
       await this.sequelize.authenticate();
       logger.info('Database connection successful.');
@@ -44,29 +44,29 @@ export class DatabaseManager {
       process.exit(1);
     }
 
-    if (ENVS.DB_FORCE_SYNC) {
+    if (envs.DB_FORCE_SYNC) {
       logger.info('Syncing database tables');
       await this.sequelize.sync({ force: true });
     }
 
     try {
       if (
-        !ENVS.ADMIN_USER_NAME ||
-        !ENVS.ADMIN_PASSWORD ||
-        !ENVS.ADMIN_PLAYER_NAME
+        !envs.ADMIN_USER_NAME ||
+        !envs.ADMIN_PASSWORD ||
+        !envs.ADMIN_PLAYER_NAME
       ) {
         throw new Error('Admin user environment variables are missing.');
       }
       const existingAdmin = await this.user.findUserByName(
-        ENVS.ADMIN_USER_NAME
+        envs.ADMIN_USER_NAME
       );
       if (existingAdmin) {
         logger.info('Admin user already exists');
       } else {
-        await db.user.create(
-          ENVS.ADMIN_USER_NAME,
-          ENVS.ADMIN_PASSWORD,
-          ENVS.ADMIN_PLAYER_NAME,
+        await database.user.create(
+          envs.ADMIN_USER_NAME,
+          envs.ADMIN_PASSWORD,
+          envs.ADMIN_PLAYER_NAME,
           'admin',
           true
         );

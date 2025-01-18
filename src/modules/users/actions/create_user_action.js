@@ -9,8 +9,7 @@ import dayjs from 'dayjs';
 import { v4 as uuidv4 } from 'uuid';
 
 export const createUserAction =
-  ({ database, ENVS, mailer }) =>
-  async (req, res) => {
+  (database, envs, mailer) => async (req, res) => {
     logger.info('POST /api_v1/user called', {
       method: req.method,
       url: req.url,
@@ -65,11 +64,11 @@ export const createUserAction =
       });
       logger.debug('Activation token created for new user (token redacted)');
       try {
-        const verificationLink = `${ENVS.NODE_ENV ? 'https' : 'http'}://${
+        const verificationLink = `${envs.USE_SSL ? 'https' : 'http'}://${
           req.headers.host
-        }/api_v1/confirm/${token}`;
+        }/api_v1/users/verify/${token}`;
         await mailer.sendMail({
-          from: ENVS.FROM_EMAIL,
+          from: envs.FROM_EMAIL,
           to: user_name,
           subject: 'Please Confirm Your Email',
           text: `Hello! Confirm your email by visiting: ${verificationLink}`,
