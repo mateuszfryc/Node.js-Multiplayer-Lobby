@@ -12,7 +12,7 @@ export const gamesRoutes = (baseUrl, services) => {
   const router = Router();
   const url = `${baseUrl}/games`;
   const { database, activeGames, websockets } = services;
-  const jwtAuth = authenticateToken;
+  const jwtAuth = authenticateToken(database);
 
   // prettier-ignore
   {

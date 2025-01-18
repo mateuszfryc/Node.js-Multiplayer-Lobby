@@ -13,12 +13,13 @@ export const authRoutes = (baseUrl, services) => {
   const router = Router();
   const authUrl = `${baseUrl}/auth`;
   const { database, envs } = services;
+  const jwtAuth = authenticateToken(database);
 
   // prettier-ignore
   {
     router.post(authUrl, loginLimiter, loginSpeedLimiter, loginAction(database, envs));
     router.patch(authUrl, refreshAction(database, envs));
-    router.delete(authUrl, authenticateToken, logoutAction(database));
+    router.delete(authUrl, jwtAuth, logoutAction(database));
   }
 
   return router;

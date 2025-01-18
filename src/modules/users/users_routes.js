@@ -10,12 +10,13 @@ export const usersRoutes = (baseUrl, services) => {
   const router = Router();
   const url = `${baseUrl}/users`;
   const { database } = services;
+  const jwtAuth = authenticateToken(database);
 
   // prettier-ignore
   {
-    router.post(url, authenticateToken, createUserAction(database));
-    router.put(`${url}/:user_id`, authenticateToken, updateUserAction(database));
-    router.delete(`${url}/:user_id`, authenticateToken, deleteUserAction(database));
+    router.post(url, jwtAuth, createUserAction(database));
+    router.put(`${url}/:user_id`, jwtAuth, updateUserAction(database));
+    router.delete(`${url}/:user_id`, jwtAuth, deleteUserAction(database));
     router.patch(`${url}/:token`, confirmUserAction(database));
   }
 
