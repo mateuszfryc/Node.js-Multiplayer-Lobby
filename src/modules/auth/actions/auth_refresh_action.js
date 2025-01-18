@@ -15,7 +15,15 @@ export const refreshAction = (database, envs) => async (req, res) => {
       logger.warn('Refresh token missing');
       return jsonRes(res, '', 'Refresh token missing', [], 400);
     }
-    const decoded = jwt.verify(refreshToken, envs.JWT_REFRESH_SECRET ?? '');
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, envs.JWT_REFRESH_SECRET ?? '');
+    } catch (e) {
+      logger.warn('Invalid refresh token');
+      // Log the user out by clearing the refresh token in the database
+      await database.user.logoutUser(req.user.id);
+      return jsonRes(res, '', 'Unauthorized', [], 401);
+    }
     logger.debug('Refresh token decoded successfully', {
       role: decoded?.role,
     });
