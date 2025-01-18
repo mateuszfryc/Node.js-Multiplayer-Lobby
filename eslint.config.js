@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 /** @type {import('eslint').Linter.Config[]} */
 export default [
   {
-    files: ['**/*.{js,mjs,cjs,ts}'],
+    files: ['**/*.{js}'],
     languageOptions: {
       globals: globals.node,
     },
@@ -17,7 +17,9 @@ export default [
             ['#utils', './src/utils'],
             ['#config', './src/config'],
             ['#auth', './src/modules/auth'],
-            ['#rooms', './src/modules/rooms'],
+            ['#persistence', './src/modules/persistence'],
+            ['#users', './src/modules/users'],
+            ['#games', './src/modules/games'],
           ],
           extensions: ['.js'],
         },

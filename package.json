@@ -4,7 +4,7 @@
   "description": "",
   "main": "src/index.js",
   "author": "",
-  "license": "ISC",
+  "license": "GNU AGPL v3.0",
   "directories": {
     "doc": "doc"
   },
@@ -13,7 +13,9 @@
     "#utils/*.js": "./src/utils/*.js",
     "#config/*.js": "./src/config/*.js",
     "#auth/*.js": "./src/modules/auth/*.js",
-    "#rooms/*.js": "./src/modules/rooms/*.js"
+    "#persistence/*.js": "./src/modules/persistence/*.js",
+    "#users/*.js": "./src/modules/users/*.js",
+    "#games/*.js": "./src/modules/games/*.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
