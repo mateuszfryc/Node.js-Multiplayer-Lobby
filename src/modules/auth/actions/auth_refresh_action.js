@@ -10,6 +10,14 @@ export const refreshAction = (database, envs) => async (req, res) => {
     clientIp: req.ip,
   });
   try {
+    const { requestingUser } = req.body;
+    logger.debug('Decoded user role for logout', {
+      role: requestingUser?.role,
+    });
+    if (!requestingUser) {
+      logger.warn('Unauthorized');
+      return jsonRes(res, '', 'Unauthorized', [], 401);
+    }
     const { refreshToken } = req.body;
     if (!refreshToken) {
       logger.warn('Refresh token missing');
