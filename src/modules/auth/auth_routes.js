@@ -1,5 +1,7 @@
 import { Router } from 'express';
 
+import { asyncBoundry } from '#config/bounds.js';
+import { DELETE, PATCH, POST } from '#config/consts.js';
 import {
   loginAction,
   loginLimiter,
@@ -16,11 +18,14 @@ export const authRoutes = (baseUrl, services) => {
   const jwtAuth = authenticateToken(database);
 
   // prettier-ignore
-  {
-    router.post(authUrl, loginLimiter, loginSpeedLimiter, loginAction(database, envs));
-    router.patch(authUrl, refreshAction(database, envs));
-    router.delete(authUrl, jwtAuth, logoutAction(database));
-  }
+  [
+    [POST, authUrl, loginAction(database, envs), [loginLimiter, loginSpeedLimiter]],
+    [PATCH, authUrl, refreshAction(database, envs), [jwtAuth]],
+    [DELETE, authUrl, logoutAction(database), [jwtAuth]],
+  ]
+  .forEach(([method, url, action, middleware = []]) => {
+    if (router[method]) router[method](url, ...middleware, asyncBoundry(action));
+  });
 
   return router;
 };

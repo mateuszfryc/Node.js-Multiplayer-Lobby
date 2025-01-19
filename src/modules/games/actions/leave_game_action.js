@@ -15,24 +15,23 @@ export const leaveGameAction =
       });
       if (!user || !user.id) {
         logger.warn('Unauthorized attempt to leave game');
-        return jsonRes(res, '', 'Unauthorized', [], 401);
+        return jsonRes(res, 'Unauthorized', [], 401);
       }
       const gameId = req.params.game_id;
       const plainGameId = gameId;
       if (!plainGameId) {
         logger.warn('Unable to decrypt game_id for leave');
-        return jsonRes(res, '', 'Invalid game_id', [], 400);
+        return jsonRes(res, 'Invalid game_id', [], 400);
       }
       const gameData = activeGames.get(gameId);
       if (!gameData) {
         logger.warn('Game not found in activeGames for leave');
-        return jsonRes(res, '', 'Game not found', [], 404);
+        return jsonRes(res, 'Game not found', [], 404);
       }
       if (gameData.owner_id === user.id) {
         logger.warn('Player tried to leave the game hosted by himself.');
         return jsonRes(
           res,
-          '',
           'Player cannot leave the game hosted by himself.',
           [],
           404
@@ -51,16 +50,16 @@ export const leaveGameAction =
           connectedPlayersCount: connectedPlayers.length,
         });
         websockets.emit('game_updated', gameData);
-        return jsonRes(res, 'Left game', '', { game_id: gameId }, 200);
+        return jsonRes(res, '', { game_id: gameId }, 200);
       }
       logger.warn(
         `Player id: ${user.id} that is not part of the game: ${gameData.id} tried to leave that game.`
       );
-      return jsonRes(res, 'Bad request', '', {}, 404);
+      return jsonRes(res, 'Bad request', [], 404);
     } catch (e) {
       logger.error('Error in POST /api_v1/games/:game_id/leave route', {
         error: e.message,
       });
-      return jsonRes(res, '', 'Server error', [], 500);
+      return jsonRes(res, 'Server error', [], 500);
     }
   };

@@ -10,9 +10,9 @@ export const getAllGamesAction = (database) => async (req, res) => {
   try {
     const games = await database.game.findAllGames();
     logger.debug('Fetched games list', { count: games.length });
-    return jsonRes(res, '', '', games, 200);
+    return jsonRes(res, '', games, 200);
   } catch (e) {
     logger.error('Error in GET /api_v1/games route', { error: e.message });
-    return jsonRes(res, '', 'Server error', [], 500);
+    return jsonRes(res, 'Server Error', [], 500);
   }
 };

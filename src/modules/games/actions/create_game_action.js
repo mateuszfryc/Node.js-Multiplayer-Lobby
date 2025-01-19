@@ -17,7 +17,7 @@ export const createGameAction =
       });
       if (!requestingUser || !requestingUser.id) {
         logger.warn('Unauthorized attempt to create game');
-        return jsonRes(res, '', 'Unauthorized', [], 401);
+        return jsonRes(res, 'Unauthorized', [], 401);
       }
       let {
         ip,
@@ -31,15 +31,15 @@ export const createGameAction =
       } = req.body;
       if (!ip || !port || !game_name || !map_name || !game_mode) {
         logger.warn('Missing required fields in create game request');
-        return jsonRes(res, '', 'Missing fields', [], 400);
+        return jsonRes(res, 'Missing fields', [], 400);
       }
       if (!validateIpOrLocalhost(ip)) {
         logger.warn('Invalid IP address for game creation');
-        return jsonRes(res, '', 'Incorrect IP address', [], 400);
+        return jsonRes(res, 'Incorrect IP address', [], 400);
       }
       if (!validatePort(port)) {
         logger.warn('Invalid port number for game creation');
-        return jsonRes(res, '', 'Incorrect port number', [], 400);
+        return jsonRes(res, 'Incorrect port number', [], 400);
       }
       if (
         !USER_CHARS.test(game_name) ||
@@ -47,7 +47,7 @@ export const createGameAction =
         !USER_CHARS.test(game_mode)
       ) {
         logger.warn('Invalid characters in game fields');
-        return jsonRes(res, '', 'Invalid characters', [], 400);
+        return jsonRes(res, 'Invalid characters', [], 400);
       }
       if (!max_players) max_players = 8;
       if (!isPrivate) isPrivate = false;
@@ -78,9 +78,9 @@ export const createGameAction =
         private: isPrivate,
       });
       websockets.emit('game_created', newGame);
-      return jsonRes(res, 'Game created', '', newGame, 201);
+      return jsonRes(res, '', newGame, 201);
     } catch (e) {
       logger.error('Error in POST /api_v1/games route', { error: e.message });
-      return jsonRes(res, '', 'Server error', [], 500);
+      return jsonRes(res, 'Server Error', [], 500);
     }
   };

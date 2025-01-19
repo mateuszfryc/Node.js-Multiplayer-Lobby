@@ -15,19 +15,19 @@ export const confirmUserAction = (database) => async (req, res) => {
     const act = await database.activation.findByToken(token);
     if (!act) {
       logger.warn('Invalid token used for email confirmation');
-      return jsonRes(res, '', 'Invalid token', [], 404);
+      return jsonRes(res, 'Invalid token', [], 404);
     }
     if (dayjs(now).isAfter(dayjs(act.expires_at))) {
       logger.warn('Expired token used for email confirmation');
-      return jsonRes(res, '', 'Invalid token', [], 400);
+      return jsonRes(res, 'Invalid token', [], 400);
     }
     await database.user.updateUser(act.user_id, { validated_at: now });
     logger.info('Email confirmed for a user');
-    return jsonRes(res, 'Email confirmed', '', {}, 200);
+    return jsonRes(res, '', [], 200);
   } catch (e) {
     logger.error('Error in /api_v1/confirm/:token route', {
       error: e.message,
     });
-    return jsonRes(res, '', 'Invalid token', [], 500);
+    return jsonRes(res, 'Server Error', [], 500);
   }
 };

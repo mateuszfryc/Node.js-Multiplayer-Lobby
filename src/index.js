@@ -26,6 +26,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import 'winston-daily-rotate-file';
 
 import { authRoutes } from '#auth/auth_routes.js';
+import { errorBoundry } from '#config/bounds.js';
 import { loadEnv } from '#config/env.js';
 import { logger } from '#config/logger.js';
 import { transporter } from '#config/smpt.js';
@@ -89,6 +90,7 @@ const limiter = rateLimit({
   message: { message: '', error: 'Too many requests', data: {} },
 });
 app.use(limiter);
+app.use(errorBoundry);
 const database = new DatabaseManager(
   envs,
   userSchema,

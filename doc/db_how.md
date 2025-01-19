@@ -94,5 +94,5 @@ DELETE FROM users WHERE user_name = 'user@mail.com';
 
 Logout user:
 `sql
-UPDATE users SET logged_in = false, refresh_token = NULL, updated_at = NOW() WHERE user_name = 'user@mail.com';
+UPDATE users SET refresh_token = NULL, updated_at = NOW() WHERE user_name = 'user@mail.com';
 `

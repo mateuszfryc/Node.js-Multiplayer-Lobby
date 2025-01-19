@@ -1,266 +1,463 @@
 {
   "info": {
-    "_postman_id": "c327d272-a9d4-40e7-bf52-f6544a75253c",
+    "_postman_id": "b2f14ead-4802-4a73-a324-99cd89cc8666",
     "name": "Lobby",
     "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
     "_exporter_id": "17618717"
   },
   "item": [
     {
-      "name": "Login",
-      "event": [
+      "name": "Auth",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "// Check if the tokens exist in the response",
-              "if (response.data && response.data.accessToken && response.data.refreshToken) {",
-              "    // Set tokens as variables in Postman for future requests",
-              "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
-              "    pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
-              "",
-              "    // Log tokens to the console",
-              "    console.log('Access Token:', response.data.accessToken);",
-              "    console.log('Refresh Token:', response.data.refreshToken);",
-              "} else {",
-              "    // Log an error message if tokens are missing",
-              "    console.log('No valid tokens in response.');",
-              "}"
-            ],
-            "type": "text/javascript",
-            "packages": {}
-          }
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.data && response.data.accessToken && response.data.refreshToken) {",
+                  "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+                  "    console.log('Access Token:', response.data.accessToken);",
+                  "    console.log('Refresh Token:', response.data.refreshToken);",
+                  "} else {",
+                  "    console.log('No valid tokens in response.');",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_name\": \"user@mail.com\",\n  \"password\": \"N3trunn3r!0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}api_v1/auth"
+          },
+          "response": []
         },
         {
-          "listen": "prerequest",
-          "script": {
-            "exec": [
-              ""
+          "name": "Logout",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
             ],
-            "type": "text/javascript",
-            "packages": {}
-          }
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{base_url}}api_v1/auth"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.data && response.data.accessToken && response.data.refreshToken) {",
+                  "  pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+                  "  console.log('Access Token:', response.data.accessToken);",
+                  "  console.log('Refresh Token:', response.data.refreshToken);",
+                  "} else {",
+                  "  console.log('No valid tokens in response.');",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}api_v1/auth"
+          },
+          "response": []
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"user_name\": \"floidmoon@gmail.com\",\n  \"password\": \"N3trunn3r!\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": "{{base_url}}api_v1/login"
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Refresh Token",
-      "event": [
+      "name": "Users",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "if (response.data && response.data.accessToken && response.data.refreshToken) {",
-              "  pm.collectionVariables.set('accessToken', response.data.accessToken);",
-              "  pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
-              "  console.log('Access Token:', response.data.accessToken);",
-              "  console.log('Refresh Token:', response.data.refreshToken);",
-              "} else {",
-              "  console.log('No valid tokens in response.');",
-              "}"
+          "name": "Get User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "\r",
+                  "if (response.data && response.data.id) {\r",
+                  "    pm.collectionVariables.set('userId', response.data.id);\r",
+                  "    console.log('userId:', response.data.id);\r",
+                  "} else {\r",
+                  "    // Log an error message if tokens are missing\r",
+                  "    console.log('No valid user id in response.');\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
             ],
-            "type": "text/javascript",
-            "packages": {}
-          }
+            "url": "{{base_url}}api_v1/users/{{userId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Create User (admin only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "if (response.data && response.data.id) {\r",
+                  "    pm.collectionVariables.set('userId', response.data.id);\r",
+                  "    console.log('userId:', response.data.id);\r",
+                  "} else {\r",
+                  "    console.log('No valid user id in response.');\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_name\": \"new_user@mail.com\",\n  \"password\": \"N3trunn3r!0\",\n  \"player_name\": \"MasterYoda\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}api_v1/users"
+          },
+          "response": []
+        },
+        {
+          "name": "Update User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "if (response.data && response.data.id) {\r",
+                  "    pm.collectionVariables.set('userId', response.data.id);\r",
+                  "    console.log('userId:', response.data.id);\r",
+                  "} else {\r",
+                  "    // Log an error message if tokens are missing\r",
+                  "    console.log('No valid user id in response.');\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"player_name\": \"DarthVader\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}api_v1/users/{{userId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete User (admin only)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}api_v1/users/{{userId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Email",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}api_v1/users/{{token}}"
+          },
+          "response": []
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "{{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n    \"refreshToken\": \"{{refreshToken}}\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+      ]
+    },
+    {
+      "name": "Games",
+      "item": [
+        {
+          "name": "Get Games",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}api_v1/games"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "if (response.data && response.data.id) {\r",
+                  "    pm.collectionVariables.set('gameId', response.data.id);\r",
+                  "    console.log('New Game Id:', response.data.id);\r",
+                  "} else {\r",
+                  "    console.log('No valid game id in response.');\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [],
+                "type": "text/javascript"
+              }
             }
-          }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ip\": \"127.0.0.1\",\n  \"port\": 12345,\n  \"game_name\": \"Test Game\",\n  \"map_name\": \"Map1\",\n  \"game_mode\": \"Deathmatch\",\n  \"max_players\": 8,\n  \"private\": false,\n  \"password\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            },
+            "url": "{{base_url}}api_v1/games"
+          },
+          "response": []
         },
-        "url": "{{base_url}}api_v1/refresh"
-      },
-      "response": []
-    },
-    {
-      "name": "Get Games (Test Auth)",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": "{{base_url}}api_v1/games"
-      },
-      "response": []
-    },
-    {
-      "name": "Logout",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{}"
+        {
+          "name": "Update Game",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"port\": 5555,\n  \"name\": \"Updated Game\",\n  \"map_name\": \"brand new map\",\n  \"game_mode\": \"free for all\",\n  \"max_players\": 16,\n  \"private\": true,\n  \"ping\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}api_v1/games/{{gameId}}"
+          },
+          "response": []
         },
-        "url": "{{base_url}}api_v1/logout"
-      },
-      "response": []
-    },
-    {
-      "name": "Create user (admin only)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"user_name\": \"mateuszfryc@gmail.com\",\n  \"password\": \"N3trunn3r!0\",\n  \"player_name\": \"mateusz\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
+        {
+          "name": "Delete Game",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}api_v1/games/{{gameId}}"
+          },
+          "response": []
         },
-        "url": "{{base_url}}api_v1/join"
-      },
-      "response": []
-    },
-    {
-      "name": "Confirm Email",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": "{{base_url}}api_v1/confirm/{{token}}"
-      },
-      "response": []
-    },
-    {
-      "name": "Create Game",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"ip\": \"127.0.0.1\",\n  \"port\": 12345,\n  \"game_name\": \"Test Game\",\n  \"map_name\": \"Map1\",\n  \"game_mode\": \"Deathmatch\",\n  \"max_players\": 8,\n  \"private\": false\n}"
+        {
+          "name": "Join Game",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{base_url}}api_v1/games/{{gameId}}/join"
+          },
+          "response": []
         },
-        "url": "{{base_url}}api_v1/games"
-      },
-      "response": []
-    },
-    {
-      "name": "Update Game",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"game_name\": \"Updated Game\"\n}"
-        },
-        "url": "{{base_url}}api_v1/games/{{game_id}}"
-      },
-      "response": []
-    },
-    {
-      "name": "Delete Game",
-      "request": {
-        "method": "DELETE",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "url": "{{base_url}}api_v1/games/{{game_id}}"
-      },
-      "response": []
-    },
-    {
-      "name": "Join Game",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{}"
-        },
-        "url": "{{base_url}}api_v1/games/{{game_id}}/join"
-      },
-      "response": []
-    },
-    {
-      "name": "Leave Game",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{}"
-        },
-        "url": "{{base_url}}api_v1/games/{{game_id}}/leave"
-      },
-      "response": []
+        {
+          "name": "Leave Game",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{base_url}}api_v1/games/{{gameId}}/leave"
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -282,6 +479,14 @@
     },
     {
       "key": "token",
+      "value": ""
+    },
+    {
+      "key": "gameId",
+      "value": ""
+    },
+    {
+      "key": "userId",
       "value": ""
     }
   ]

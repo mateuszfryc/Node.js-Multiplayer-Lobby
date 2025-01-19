@@ -21,10 +21,10 @@ export class UserModel {
       password: hashedPassword,
       player_name,
       role,
-      logged_in: false,
       created_at: now,
       updated_at: now,
       validated_at: validated ? now : null,
+      refresh_token: null,
     };
     return this.model.create(data);
   }
@@ -40,14 +40,12 @@ export class UserModel {
   async loginUser(user, refreshToken) {
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
     await this.updateUser(user.id, {
-      logged_in: true,
       refresh_token: hashedRefreshToken,
       updated_at: dayjs().toISOString(),
     });
   }
   async logoutUser(userId) {
     await this.updateUser(userId, {
-      logged_in: false,
       refresh_token: null,
       updated_at: dayjs().toISOString(),
     });

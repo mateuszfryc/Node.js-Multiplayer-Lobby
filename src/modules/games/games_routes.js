@@ -1,3 +1,5 @@
+import { asyncBoundry } from '#config/bounds.js';
+import { DELETE, GET, POST, PUT } from '#config/consts.js';
 import { Router } from 'express';
 
 import { authenticateToken } from '#auth/middleware/authenticateToken.js';
@@ -15,14 +17,17 @@ export const gamesRoutes = (baseUrl, services) => {
   const jwtAuth = authenticateToken(database);
 
   // prettier-ignore
-  {
-    router.get(url, jwtAuth, getAllGamesAction(database));
-    router.post(url, jwtAuth, createGameAction(database, activeGames, websockets));
-    router.put(`${url}/:game_id`, jwtAuth, updateGameAction(database, activeGames, websockets));
-    router.post(`${url}/:game_id/join`, jwtAuth, joinGameAction(database, activeGames, websockets));
-    router.post(`${url}/:game_id/leave`, jwtAuth, leaveGameAction(database, activeGames, websockets));
-    router.delete(`${url}/:game_id`, jwtAuth, deleteGameAction(database, activeGames, websockets));
-  }
+  [
+    [GET, url, getAllGamesAction(database), [jwtAuth]],
+    [POST, url, createGameAction(database, activeGames, websockets), [jwtAuth]],
+    [PUT, `${url}/:game_id`, updateGameAction(database, activeGames, websockets), [jwtAuth]],
+    [POST, `${url}/:game_id/join`, joinGameAction(database, activeGames, websockets), [jwtAuth]],
+    [POST, `${url}/:game_id/leave`, leaveGameAction(database, activeGames, websockets), [jwtAuth]],
+    [DELETE, `${url}/:game_id`, deleteGameAction(database, activeGames, websockets), [jwtAuth]],
+  ]
+  .forEach(([method, url, action, middleware = []]) => {
+    if (router[method]) router[method](url, ...middleware, asyncBoundry(action));
+  });
 
   return router;
 };

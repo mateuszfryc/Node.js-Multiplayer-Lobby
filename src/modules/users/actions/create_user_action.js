@@ -23,28 +23,28 @@ export const createUserAction =
       const { user_name, password, player_name } = req.body;
       if (!user || user.role !== 'admin') {
         logger.warn('Non-admin attempted to create new user');
-        return jsonRes(res, '', 'Request failed', [], 400);
+        return jsonRes(res, 'Request failed', [], 400);
       }
       if (!user_name || !password || !player_name) {
         logger.warn('Missing fields in /api_v1/register');
-        return jsonRes(res, '', 'Request failed', [], 400);
+        return jsonRes(res, 'Request failed', [], 400);
       }
       if (!validateEmailFormat(user_name)) {
         logger.warn('Invalid email format in /api_v1/register');
-        return jsonRes(res, '', 'Request failed', [], 400);
+        return jsonRes(res, 'Request failed', [], 400);
       }
       if (!validatePasswordFormat(password)) {
         logger.warn('Invalid password format in /api_v1/register');
-        return jsonRes(res, '', 'Request failed', [], 400);
+        return jsonRes(res, 'Request failed', [], 400);
       }
       if (!validatePlayerNameFormat(player_name)) {
         logger.warn('Invalid player_name format in /api_v1/register');
-        return jsonRes(res, '', 'Request failed', [], 400);
+        return jsonRes(res, 'Request failed', [], 400);
       }
       const existing = await database.user.findUserByName(user_name);
       if (existing) {
         logger.warn('Attempt to create existing user');
-        return jsonRes(res, '', 'Request failed', [], 400);
+        return jsonRes(res, 'Request failed', [], 400);
       }
       const now = dayjs().toISOString();
       const newUser = await database.user.create(
@@ -80,15 +80,10 @@ export const createUserAction =
           error: emailError.message,
         });
       }
-      return jsonRes(
-        res,
-        'User created',
-        '',
-        { id: newUser.id, player_name },
-        201
-      );
+      const data = { id: newUser.id, player_name };
+      return jsonRes(res, '', data, 201);
     } catch (e) {
       logger.error('Error in /api_v1/user route', { error: e.message });
-      return jsonRes(res, '', 'Server error', [], 500);
+      return jsonRes(res, 'Server Error', [], 500);
     }
   };
