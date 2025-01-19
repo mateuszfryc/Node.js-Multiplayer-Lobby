@@ -40,6 +40,7 @@ import { userSchema } from '#users/schema/users_schema.js';
 import { usersRoutes } from '#users/users_routes.js';
 
 const envs = await ensureEnvs([
+  { key: 'NODE_ENV' },
   { key: 'PORT', log: true },
   { key: 'JWT_SECRET', minLength: 32 },
   { key: 'JWT_REFRESH_SECRET', minLength: 32 },
@@ -60,7 +61,6 @@ const envs = await ensureEnvs([
   { key: 'ADMIN_USER_NAME' },
   { key: 'ADMIN_PASSWORD' },
   { key: 'ADMIN_PLAYER_NAME' },
-  { key: 'NODE_ENV' },
 ]);
 
 const app = express();
