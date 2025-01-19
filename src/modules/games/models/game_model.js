@@ -36,7 +36,7 @@ export class GameModel {
       name,
       map_name,
       game_mode,
-      connected_players: [],
+      connected_players: [ownerId], // owner is always connected
       max_players,
       private: isPrivate,
       password,

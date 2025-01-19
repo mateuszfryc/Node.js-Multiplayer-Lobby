@@ -29,6 +29,10 @@ export const joinGameAction =
       );
     }
     const connectedPlayers = gameData.connected_players || [];
+    if (connectedPlayers.length > gameData.max_players) {
+      logger.warn('Game is full');
+      return jsonRes(res, 'Game is full', [], 403);
+    }
     if (!connectedPlayers.includes(requestingUser.id)) {
       connectedPlayers.push(requestingUser.id);
       gameData.connected_players = connectedPlayers;

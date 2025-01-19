@@ -17,12 +17,18 @@
               "script": {
                 "exec": [
                   "const response = pm.response.json();",
+                  "",
+                  "// Check if the tokens exist in the response",
                   "if (response.data && response.data.accessToken && response.data.refreshToken) {",
+                  "    // Set tokens as variables in Postman for future requests",
                   "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
                   "    pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+                  "",
+                  "    // Log tokens to the console",
                   "    console.log('Access Token:', response.data.accessToken);",
                   "    console.log('Refresh Token:', response.data.refreshToken);",
                   "} else {",
+                  "    // Log an error message if tokens are missing",
                   "    console.log('No valid tokens in response.');",
                   "}"
                 ],
@@ -46,7 +52,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"user_name\": \"user@mail.com\",\n  \"password\": \"N3trunn3r!0\"\n}",
+              "raw": "{\n  \"user_name\": \"user@mail.com\",\n  \"password\": \"password123\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -185,10 +191,12 @@
               "script": {
                 "exec": [
                   "const response = pm.response.json();\r",
+                  "\r",
                   "if (response.data && response.data.id) {\r",
                   "    pm.collectionVariables.set('userId', response.data.id);\r",
                   "    console.log('userId:', response.data.id);\r",
                   "} else {\r",
+                  "    // Log an error message if tokens are missing\r",
                   "    console.log('No valid user id in response.');\r",
                   "}"
                 ],
@@ -218,7 +226,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"user_name\": \"new_user@mail.com\",\n  \"password\": \"N3trunn3r!0\",\n  \"player_name\": \"MasterYoda\"\n}",
+              "raw": "{\n  \"user_name\": \"user@mail.com\",\n  \"password\": \"password123\",\n  \"player_name\": \"MasterYoda\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -237,6 +245,7 @@
               "script": {
                 "exec": [
                   "const response = pm.response.json();\r",
+                  "\r",
                   "if (response.data && response.data.id) {\r",
                   "    pm.collectionVariables.set('userId', response.data.id);\r",
                   "    console.log('userId:', response.data.id);\r",
@@ -334,6 +343,7 @@
               "script": {
                 "exec": [
                   "const response = pm.response.json();\r",
+                  "\r",
                   "if (response.data && response.data.id) {\r",
                   "    pm.collectionVariables.set('gameId', response.data.id);\r",
                   "    console.log('New Game Id:', response.data.id);\r",
@@ -393,7 +403,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"port\": 5555,\n  \"name\": \"Updated Game\",\n  \"map_name\": \"brand new map\",\n  \"game_mode\": \"free for all\",\n  \"max_players\": 16,\n  \"private\": true,\n  \"ping\": 30\n}",
+              "raw": "{\n  \"port\": 5555,\n  \"name\": \"Updated Game\",\n  \"map_name\": \"brand new map\",\n  \"game_mode\": \"NOPE free for all\",\n  \"max_players\": 16,\n  \"private\": true,\n  \"ping\": 30\n}",
               "options": {
                 "raw": {
                   "language": "json"
