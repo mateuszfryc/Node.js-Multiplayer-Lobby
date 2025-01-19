@@ -19,55 +19,45 @@ export const loginSpeedLimiter = slowDown({
 });
 
 export const loginAction = (database, envs) => async (req, res) => {
-  logger.info('POST /api_v1/login called', {
-    method: req.method,
-    url: req.url,
-    clientIp: req.ip,
-  });
-  try {
-    const { user_name, password } = req.body;
-    if (!user_name) {
-      logger.warn('No user_name in login request');
-      return jsonRes(res, 'Invalid credentials', [], 400);
-    }
-    if (!password) {
-      logger.warn('No password in login request');
-      return jsonRes(res, 'Invalid credentials', [], 400);
-    }
-    if (!validateEmailFormat(user_name)) {
-      logger.warn('Invalid email format in login request');
-      return jsonRes(res, 'Invalid credentials', [], 400);
-    }
-    const user = await database.user.findUserByName(user_name);
-    if (!user) {
-      logger.warn('User not found in database');
-      return jsonRes(res, 'Invalid credentials', [], 401);
-    }
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) {
-      logger.warn('Password mismatch');
-      return jsonRes(res, 'Invalid credentials', [], 401);
-    }
-    if (!user.validated_at) {
-      logger.warn('Email not validated');
-      return jsonRes(res, 'Email not validated', [], 403);
-    }
-    const accessToken = jwt.sign(
-      { id: user.id, role: user.role, player_name: user.player_name },
-      envs.JWT_SECRET ?? '',
-      { expiresIn: '15m' }
-    );
-    const refreshToken = jwt.sign(
-      { id: user.id, role: user.role },
-      envs.JWT_REFRESH_SECRET ?? '',
-      { expiresIn: '1d' }
-    );
-    await database.user.loginUser(user, refreshToken);
-    logger.info('User logged in successfully');
-    const data = { accessToken, refreshToken };
-    return jsonRes(res, '', data, 200);
-  } catch (e) {
-    logger.error('Error in /api_v1/login route', { error: e.message });
-    return jsonRes(res, 'Server Error', [], 500);
+  const { user_name, password } = req.body;
+  if (!user_name) {
+    logger.warn('No user_name in login request');
+    return jsonRes(res, 'Invalid credentials', [], 400);
   }
+  if (!password) {
+    logger.warn('No password in login request');
+    return jsonRes(res, 'Invalid credentials', [], 400);
+  }
+  if (!validateEmailFormat(user_name)) {
+    logger.warn('Invalid email format in login request');
+    return jsonRes(res, 'Invalid credentials', [], 400);
+  }
+  const user = await database.user.findUserByName(user_name);
+  if (!user) {
+    logger.warn('User not found in database');
+    return jsonRes(res, 'Invalid credentials', [], 401);
+  }
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) {
+    logger.warn('Password mismatch');
+    return jsonRes(res, 'Invalid credentials', [], 401);
+  }
+  if (!user.validated_at) {
+    logger.warn('Email not validated');
+    return jsonRes(res, 'Email not validated', [], 403);
+  }
+  const accessToken = jwt.sign(
+    { id: user.id, role: user.role, player_name: user.player_name },
+    envs.JWT_SECRET ?? '',
+    { expiresIn: '15m' }
+  );
+  const refreshToken = jwt.sign(
+    { id: user.id, role: user.role },
+    envs.JWT_REFRESH_SECRET ?? '',
+    { expiresIn: '1d' }
+  );
+  await database.user.loginUser(user, refreshToken);
+  logger.info('User logged in successfully');
+  const data = { accessToken, refreshToken };
+  return jsonRes(res, '', data, 200);
 };

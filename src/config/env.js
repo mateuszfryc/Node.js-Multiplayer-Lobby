@@ -2,7 +2,8 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import { logger } from './logger.js';
 
-export const loadEnv = async (envDefinitions) => {
+// check for required environment variables and format them based on type
+export const ensureEnvs = async (envDefinitions) => {
   const envs = {};
   const isProduction = process.env.NODE_ENV === 'production';
   if (isProduction) {

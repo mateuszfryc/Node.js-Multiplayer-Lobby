@@ -27,6 +27,7 @@ export default [
     },
     rules: {
       'import/no-unresolved': 'error',
+      '@typescript-eslint/ban-ts-comment': 'off',
     },
     plugins: {
       import: pluginImport,

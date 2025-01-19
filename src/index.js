@@ -1,24 +1,22 @@
-/*
-Copyright (c) 2025 Mateusz Fryc
-
-This program is free software: you can redistribute it and/or modify it
-under the terms of the GNU Affero General Public License as published
-by the Free Software Foundation, either version 3 of the License,
-or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-or FITNESS FOR A PARTICULAR PURPOSE.
-See the GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License along with this program.
-If not, see <https://www.gnu.org/licenses/>.
+/**
+ * Copyright (c) 2025 Dyson Sphere Games, Mateusz Fryc
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>.
  */
 
 import express from 'express';
-import rateLimit from 'express-rate-limit';
 import fs from 'fs';
-import helmet from 'helmet';
 import { createServer } from 'http';
 import https from 'https';
 
@@ -27,18 +25,21 @@ import 'winston-daily-rotate-file';
 
 import { authRoutes } from '#auth/auth_routes.js';
 import { errorBoundry } from '#config/bounds.js';
-import { loadEnv } from '#config/env.js';
-import { logger } from '#config/logger.js';
+import { ensureEnvs } from '#config/env.js';
+import { helmetMid } from '#config/helmet.js';
+import { limiter } from '#config/limiter.js';
+import { logger, requestLogger } from '#config/logger.js';
 import { transporter } from '#config/smpt.js';
 import { gamesRoutes } from '#games/games_routes.js';
 import { gamesSchema } from '#games/schema/games_schema.js';
 import { websocketsJwtAuth } from '#games/websockets/auth_middleware.js';
+import { setupGamesFeed } from '#games/websockets/setup_games_feed.js';
 import { DatabaseManager } from '#persistence/DatabaseManager.js';
 import { activationsSchema } from '#persistence/schema/activations_schema.js';
 import { userSchema } from '#users/schema/users_schema.js';
 import { usersRoutes } from '#users/users_routes.js';
 
-const envs = await loadEnv([
+const envs = await ensureEnvs([
   { key: 'PORT', log: true },
   { key: 'JWT_SECRET', minLength: 32 },
   { key: 'JWT_REFRESH_SECRET', minLength: 32 },
@@ -64,19 +65,11 @@ const envs = await loadEnv([
 
 const app = express();
 app.use(express.json({ strict: true }));
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      useDefaults: true,
-      directives: {
-        'script-src': ["'self'"],
-      },
-    },
-    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
-    frameguard: { action: 'deny' },
-    noSniff: true,
-  })
-);
+app.use(helmetMid);
+app.use(limiter);
+app.use(requestLogger);
+app.use(errorBoundry);
+
 if (envs.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
   app.use((req, res, next) => {
@@ -84,13 +77,7 @@ if (envs.NODE_ENV === 'production') {
     return res.redirect(`https://${req.headers.host}${req.url}`);
   });
 }
-const limiter = rateLimit({
-  windowMs: 60000,
-  max: 50,
-  message: { message: '', error: 'Too many requests', data: {} },
-});
-app.use(limiter);
-app.use(errorBoundry);
+
 const database = new DatabaseManager(
   envs,
   userSchema,
@@ -123,15 +110,7 @@ const baseUrl = '/api_v1';
 .forEach((initRoutes) => app.use(initRoutes(baseUrl, services)));
 
 websockets.use(websocketsJwtAuth(envs));
-websockets.on('connection', (socket) => {
-  logger.info('WebSocket connected', { socketId: socket.id });
-  socket.on('subscribeToGamesList', () => {
-    socket.emit('games_list', Array.from(activeGames.values()));
-  });
-  socket.on('error', (err) => {
-    logger.error('WebSocket error', { error: err });
-  });
-});
+websockets.on('connection', setupGamesFeed(activeGames));
 
 app.get('/health', (req, res) => {
   res.status(200).send('Server is healthy');

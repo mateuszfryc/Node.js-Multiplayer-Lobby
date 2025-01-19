@@ -1,15 +1,15 @@
 import nodemailer from 'nodemailer';
 import { logger } from './logger.js';
 
-export const transporter = (ENVS) => {
-  const smptPort = parseInt(ENVS.SMTP_PORT || '587', 10);
+export const transporter = (envs) => {
+  const smptPort = parseInt(envs.SMTP_PORT || '587', 10);
   const client = nodemailer.createTransport({
-    host: ENVS.SMTP_HOST,
+    host: envs.SMTP_HOST,
     port: smptPort,
     secure: smptPort === 465,
     auth: {
-      user: ENVS.SMTP_USER,
-      pass: ENVS.SMTP_PASS,
+      user: envs.SMTP_USER,
+      pass: envs.SMTP_PASS,
     },
   });
 

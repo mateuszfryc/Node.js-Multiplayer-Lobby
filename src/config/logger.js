@@ -59,3 +59,16 @@ export const logger = winston.createLogger({
     }),
   ],
 });
+
+// middleware that logs incoming requests in details
+export const requestLogger = (req, res, next) => {
+  const { method, url, body, query, ip } = req;
+  logger.info('Request', {
+    method,
+    url,
+    ...body,
+    ...query,
+    ip,
+  });
+  next();
+};
