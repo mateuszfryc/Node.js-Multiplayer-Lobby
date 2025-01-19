@@ -10,6 +10,7 @@ export const userSchema = (database_manager) =>
       password: { type: DataTypes.STRING, allowNull: false },
       player_name: { type: DataTypes.STRING, allowNull: false },
       role: { type: DataTypes.STRING, allowNull: false },
+      hosted_games: { type: DataTypes.ARRAY(DataTypes.UUID), allowNull: false, defaultValue: [] },
       validated_at: { type: DataTypes.DATE, allowNull: true },
       refresh_token: { type: DataTypes.TEXT, allowNull: true },
     },

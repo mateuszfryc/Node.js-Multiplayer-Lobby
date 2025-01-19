@@ -10,7 +10,7 @@ import { updateUserAction } from './actions/update_user_action.js';
 
 export const usersRoutes = (baseUrl, services) => {
   const url = `${baseUrl}/users`;
-  const { database, envs, mailer } = services;
+  const { database, envs, mailer, activeGames, websockets } = services;
   const jwtAuth = authenticateToken(database);
 
   // prettier-ignore
@@ -18,7 +18,7 @@ export const usersRoutes = (baseUrl, services) => {
     [GET, `${url}/:user_id`,getUserAction(database), [jwtAuth]],
     [POST, url, createUserAction(database, envs, mailer), [jwtAuth]],
     [PUT, `${url}/:user_id`, updateUserAction(database), [jwtAuth]],
-    [DELETE, `${url}/:user_id`, deleteUserAction(database), [jwtAuth]],
+    [DELETE, `${url}/:user_id`, deleteUserAction(database, activeGames, websockets), [jwtAuth]],
     [GET, `${url}/verify/:token`, confirmUserAction(database)],
   ]
 

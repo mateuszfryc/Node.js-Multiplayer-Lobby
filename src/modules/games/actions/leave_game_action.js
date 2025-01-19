@@ -28,6 +28,7 @@ export const leaveGameAction =
         404
       );
     }
+
     const connectedPlayers = gameData.connected_players || [];
     const playerIndex = connectedPlayers.indexOf(requestingUser.id);
     if (playerIndex > -1) {
@@ -37,12 +38,13 @@ export const leaveGameAction =
         connected_players: connectedPlayers,
       });
       activeGames.set(gameId, gameData);
+      websockets.emit('game_update', gameData);
       logger.info('Player left the game', {
         connectedPlayersCount: connectedPlayers.length,
       });
-      websockets.emit('game_updated', gameData);
       return jsonRes(res, '', { game_id: gameId }, 200);
     }
+
     logger.warn(
       `Player id: ${requestingUser.id} that is not part of the game: ${gameData.id} tried to leave that game.`
     );

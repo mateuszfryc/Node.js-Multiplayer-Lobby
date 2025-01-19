@@ -40,10 +40,13 @@ export const joinGameAction =
         connected_players: connectedPlayers,
       });
       activeGames.set(gameId, gameData);
+      websockets.emit('user_joined', {
+        game_id: gameId,
+        user_id: requestingUser.id,
+      });
       logger.info('Player joined the game', {
         connectedPlayersCount: connectedPlayers.length,
       });
-      websockets.emit('game_updated', gameData);
     }
     return jsonRes(res, '', { game_id: gameId }, 200);
   };

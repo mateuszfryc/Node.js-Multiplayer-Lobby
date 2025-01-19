@@ -61,6 +61,7 @@ export const createGameAction =
       password
     );
     activeGames.set(newGame.id, newGame.toJSON());
+    websockets.emit('new_game', newGame);
     logger.info('Game created successfully', {
       game_name,
       map_name,
@@ -68,6 +69,12 @@ export const createGameAction =
       max_players,
       private: isPrivate,
     });
-    websockets.emit('game_created', newGame);
+
+    const user = await database.user.findUserById(requestingUser.id);
+    const updatedHostedGames = [...user.hosted_games, newGame.id];
+    await database.user.updateUser(requestingUser.id, {
+      hosted_games: updatedHostedGames,
+    });
+
     return jsonRes(res, '', newGame, 201);
   };

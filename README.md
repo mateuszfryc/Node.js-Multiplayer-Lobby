@@ -1,16 +1,6 @@
 # Game Agnostic Lobby Server (GALS)
 
-Game Agnostic Lobby Server (GALS) is a simple but for the most of the part secure Node.js server designed to manage player authentication, matchmaking, and game sessions. The server is **game-agnostic**, meaning it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits Your requirements.
-
-## Why single file structure?
-
-1. The server was suppose to be made quick without adding unnecessary complexity or abstractions but still somwhat scalable.
-
-2. This was the first time I was making this kind of server and didn't knew what to expect. Single file allows for lightning fast overwiew of the whole project, which isn't as simple as with modular file system approach.
-
-3. Additionally single file enables faster development and iteration with AI tools in environments like VS Code. This approach minimizes context switching and simplifies changes, allowing for rapid prototyping and testing.
-
-4. As the project will (hopefully) grow, I will be able to refactor it into more modular file structure, but for now it's a good starting point.
+Game Agnostic Lobby Server (GALS) is a simple but for the most of the part secure Node.js server designed to manage player authentication, creating and joining games as well as websocket based games feed update for players in lobby and games owners. The server is **game-agnostic**, meaning it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits Your requirements.
 
 ---
 
@@ -42,9 +32,19 @@ Game Agnostic Lobby Server (GALS) is a simple but for the most of the part secur
   - Socket.IO integration for real-time updates.
 
 - **Custom Logging:**
+
   - Winston-based logging with daily file rotation and sensitive data redaction.
 
+- **Websockets Games Feed**
+
+  - Real-time updates for hosted games status changes. Intended for player searching for games.
+  - Socket.IO integration for game feed updates.
+
 ---
+
+## What is not intended to be
+
+- **Matchmaking:** This server is not intended to be used for matchmaking players with each other. It is designed to be a lobby server where players can create and join games. This however can be implemented by extending the server with additional features rather easly.
 
 ## Prerequisites
 

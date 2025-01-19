@@ -29,7 +29,7 @@ export const updateGameAction =
     logger.debug('Game updated in database');
     const updatedGame = await database.game.findById(gameId);
     activeGames.set(gameId, updatedGame.toJSON());
-    websockets.emit('game_updated', updatedGame);
+    websockets.emit('game_update', updatedGame);
     logger.info('Game updated successfully');
     return jsonRes(res, '', updatedGame, 200);
   };
