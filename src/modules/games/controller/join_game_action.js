@@ -36,7 +36,7 @@ export const joinGameAction =
     if (!connectedPlayers.includes(requestingUser.id)) {
       connectedPlayers.push(requestingUser.id);
       gameData.connected_players = connectedPlayers;
-      await database.game.updateGame(gameId, {
+      await database.game.update(gameId, {
         connected_players: connectedPlayers,
       });
       activeGames.set(gameId, gameData);

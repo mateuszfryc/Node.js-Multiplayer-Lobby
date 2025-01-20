@@ -1,26 +1,31 @@
-import { DELETE, GET, POST, PUT } from '#config/consts.js';
+import { asyncBoundry as bounds } from '#config/bounds.js';
+import express from 'express';
 
 import { authenticateToken } from '#auth/middleware/authenticateToken.js';
-import { defineRouter } from '#utils/routing.js';
-import { confirmUserAction } from './actions/confirm_user_action.js';
-import { createUserAction } from './actions/create_user_action.js';
-import { deleteUserAction } from './actions/delete_user_action.js';
-import { getUserAction } from './actions/get_user_action.js';
-import { updateUserAction } from './actions/update_user_action.js';
+import { confirmUserAction } from './controller/confirm_user_action.js';
+import { createUserAction } from './controller/create_user_action.js';
+import { deleteUserAction } from './controller/delete_user_action.js';
+import { getUserAction } from './controller/get_user_action.js';
+import { updateUserAction } from './controller/update_user_action.js';
 
 export const usersRoutes = (baseUrl, services) => {
-  const url = `${baseUrl}/users`;
+  const router = express.Router();
   const { database, envs, mailer, activeGames, websockets } = services;
-  const jwtAuth = authenticateToken(database);
+  const auth = authenticateToken(database);
 
-  // prettier-ignore
-  const routes = [
-    [GET, `${url}/:user_id`,getUserAction(database), [jwtAuth]],
-    [POST, url, createUserAction(database, envs, mailer), [jwtAuth]],
-    [PUT, `${url}/:user_id`, updateUserAction(database), [jwtAuth]],
-    [DELETE, `${url}/:user_id`, deleteUserAction(database, activeGames, websockets), [jwtAuth]],
-    [GET, `${url}/verify/:token`, confirmUserAction(database)],
-  ]
+  router
+    .route(`${baseUrl}/users/:user_id`)
+    .get(auth, bounds(getUserAction(database)))
+    .put(auth, bounds(updateUserAction(database)))
+    .delete(auth, bounds(deleteUserAction(database, activeGames, websockets)));
 
-  return defineRouter(routes);
+  router
+    .route(`${baseUrl}/users/verify/:token`)
+    .get(bounds(confirmUserAction(database)));
+
+  router
+    .route(`${baseUrl}/users`)
+    .post(auth, bounds(createUserAction(database, envs, mailer)));
+
+  return router;
 };

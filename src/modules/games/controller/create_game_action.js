@@ -45,7 +45,7 @@ export const createGameAction =
     const existing = await database.game.findByIpPort(ip, port);
     if (existing) {
       logger.debug('Existing game found for IP:Port. Replacing game entry');
-      await database.game.deleteGame(existing.id);
+      await database.game.delete(existing.id);
       activeGames.delete(existing.id);
     }
 
@@ -70,9 +70,9 @@ export const createGameAction =
       private: isPrivate,
     });
 
-    const user = await database.user.findUserById(requestingUser.id);
+    const user = await database.user.findById(requestingUser.id);
     const updatedHostedGames = [...user.hosted_games, newGame.id];
-    await database.user.updateUser(requestingUser.id, {
+    await database.user.update(requestingUser.id, {
       hosted_games: updatedHostedGames,
     });
 

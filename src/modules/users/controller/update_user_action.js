@@ -32,7 +32,7 @@ export const updateUserAction = (database) => async (req, res) => {
     logger.warn('Invalid player_name in update request');
     return jsonRes(res, 'Invalid player_name', [], 400);
   }
-  await database.user.updateUser(updateId, {
+  await database.user.update(updateId, {
     player_name,
     updated_at: dayjs().toISOString(),
   });

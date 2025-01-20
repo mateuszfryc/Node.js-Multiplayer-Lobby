@@ -14,7 +14,7 @@ export const refreshAction = (database, envs) => async (req, res) => {
     logger.warn('Invalid refresh token');
     return jsonRes(res, 'Unauthorized', [], 401);
   }
-  const user = await database.user.findUserById(decodedUser.id);
+  const user = await database.user.findById(decodedUser.id);
   if (!user) {
     logger.warn('User not found for refresh token');
     return jsonRes(res, 'Unauthorized', [], 401);
@@ -34,7 +34,7 @@ export const refreshAction = (database, envs) => async (req, res) => {
     envs.JWT_REFRESH_SECRET ?? '',
     { expiresIn: '7d' }
   );
-  await database.user.loginUser(user, newRefreshToken);
+  await database.user.login(user, newRefreshToken);
   logger.info('Token refreshed successfully');
   const data = { accessToken: newAccessToken, refreshToken: newRefreshToken };
   return jsonRes(res, '', data, 200);

@@ -34,7 +34,7 @@ export const leaveGameAction =
     if (playerIndex > -1) {
       connectedPlayers.splice(playerIndex, 1);
       gameData.connected_players = connectedPlayers;
-      await database.game.updateGame(gameId, {
+      await database.game.update(gameId, {
         connected_players: connectedPlayers,
       });
       activeGames.set(gameId, gameData);

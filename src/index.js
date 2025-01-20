@@ -15,6 +15,11 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
+// if envs are not set as expected crash early
+import { envDefinitions } from '#config/env.js';
+import { ensureEnvs } from '#utils/env.js';
+const envs = await ensureEnvs(envDefinitions);
+
 import express from 'express';
 import fs from 'fs';
 import { createServer } from 'http';
@@ -25,7 +30,6 @@ import 'winston-daily-rotate-file';
 
 import { authRoutes } from '#auth/auth_routes.js';
 import { errorBoundry } from '#config/bounds.js';
-import { ensureEnvs } from '#config/env.js';
 import { helmetMid } from '#config/helmet.js';
 import { limiter } from '#config/limiter.js';
 import { logger, requestLogger } from '#config/logger.js';
@@ -38,30 +42,6 @@ import { DatabaseManager } from '#persistence/DatabaseManager.js';
 import { activationsSchema } from '#persistence/schema/activations_schema.js';
 import { userSchema } from '#users/schema/users_schema.js';
 import { usersRoutes } from '#users/users_routes.js';
-
-const envs = await ensureEnvs([
-  { key: 'NODE_ENV' },
-  { key: 'PORT', log: true },
-  { key: 'JWT_SECRET', minLength: 32 },
-  { key: 'JWT_REFRESH_SECRET', minLength: 32 },
-  { key: 'DB_USER' },
-  { key: 'DB_PASSWORD' },
-  { key: 'DB_NAME' },
-  { key: 'DB_HOST' },
-  { key: 'DB_PORT', type: 'number' },
-  { key: 'DB_FORCE_SYNC', type: 'bool', log: true },
-  { key: 'SSL_KEY_PATH' },
-  { key: 'SSL_CERT_PATH' },
-  { key: 'USE_SSL', type: 'bool' },
-  { key: 'SMTP_HOST' },
-  { key: 'FROM_EMAIL' },
-  { key: 'SMTP_USER' },
-  { key: 'SMTP_PASS' },
-  { key: 'SMTP_PORT' },
-  { key: 'ADMIN_USER_NAME' },
-  { key: 'ADMIN_PASSWORD' },
-  { key: 'ADMIN_PLAYER_NAME' },
-]);
 
 const app = express();
 app.use(express.json({ strict: true }));

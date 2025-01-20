@@ -32,7 +32,7 @@ export const loginAction = (database, envs) => async (req, res) => {
     logger.warn('Invalid email format in login request');
     return jsonRes(res, 'Invalid credentials', [], 400);
   }
-  const user = await database.user.findUserByName(user_name);
+  const user = await database.user.findByUserName(user_name);
   if (!user) {
     logger.warn('User not found in database');
     return jsonRes(res, 'Invalid credentials', [], 401);
@@ -56,7 +56,7 @@ export const loginAction = (database, envs) => async (req, res) => {
     envs.JWT_REFRESH_SECRET ?? '',
     { expiresIn: '1d' }
   );
-  await database.user.loginUser(user, refreshToken);
+  await database.user.login(user, refreshToken);
   logger.info('User logged in successfully');
   const data = { accessToken, refreshToken };
   return jsonRes(res, '', data, 200);

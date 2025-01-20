@@ -6,7 +6,7 @@ export class GameModel {
   constructor(model) {
     this.model = model;
   }
-  async findAllGames() {
+  async findAll() {
     return this.model.findAll();
   }
   async findByIpPort(ip, port) {
@@ -46,10 +46,10 @@ export class GameModel {
     };
     return this.model.create(data);
   }
-  async updateGame(id, newData) {
+  async update(id, newData) {
     return this.model.update(newData, { where: { id } });
   }
-  async deleteGame(id) {
+  async delete(id) {
     return this.model.destroy({ where: { id } });
   }
 }

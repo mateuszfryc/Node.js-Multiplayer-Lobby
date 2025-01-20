@@ -57,7 +57,7 @@ export class DatabaseManager {
       ) {
         throw new Error('Admin user environment variables are missing.');
       }
-      const existingAdmin = await this.user.findUserByName(
+      const existingAdmin = await this.user.findByUserName(
         envs.ADMIN_USER_NAME
       );
       if (existingAdmin) {
@@ -77,7 +77,7 @@ export class DatabaseManager {
       process.exit(1);
     }
 
-    const games = await this.game.findAllGames();
+    const games = await this.game.findAll();
     // if before the server went down there where any active games push them into activeGames array
     games.forEach((game) => {
       activeGames.set(game.id, game.toJSON());

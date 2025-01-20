@@ -1,25 +1,25 @@
-import { DELETE, PATCH, POST } from '#config/consts.js';
-import { defineRouter } from '#utils/routing.js';
+import { asyncBoundry as bounds } from '#config/bounds.js';
+import express from 'express';
 import {
   loginAction,
   loginLimiter,
   loginSpeedLimiter,
-} from './actions/auth_login_action.js';
-import { logoutAction } from './actions/auth_logout_action.js';
-import { refreshAction } from './actions/auth_refresh_action.js';
+} from './controller/auth_login_action.js';
+import { logoutAction } from './controller/auth_logout_action.js';
+import { refreshAction } from './controller/auth_refresh_action.js';
 import { authenticateToken } from './middleware/authenticateToken.js';
 
 export const authRoutes = (baseUrl, services) => {
+  const router = express.Router();
   const authUrl = `${baseUrl}/auth`;
   const { database, envs } = services;
-  const jwtAuth = authenticateToken(database);
+  const auth = authenticateToken(database);
 
-  // prettier-ignore
-  const routes = [
-    [POST, authUrl, loginAction(database, envs), [loginLimiter, loginSpeedLimiter]],
-    [DELETE, authUrl, logoutAction(database), [jwtAuth]],
-    [PATCH, authUrl, refreshAction(database, envs)],
-  ]
+  router
+    .route(authUrl)
+    .post(loginLimiter, loginSpeedLimiter, bounds(loginAction(database, envs)))
+    .patch(bounds(refreshAction(database, envs)))
+    .delete(auth, bounds(logoutAction(database)));
 
-  return defineRouter(routes);
+  return router;
 };

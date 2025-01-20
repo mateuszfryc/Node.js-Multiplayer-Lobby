@@ -25,7 +25,7 @@ export const updateGameAction =
     }
     const newData = { ...req.body };
     delete newData.requestingUser;
-    await database.game.updateGame(gameId, newData);
+    await database.game.update(gameId, newData);
     logger.debug('Game updated in database');
     const updatedGame = await database.game.findById(gameId);
     activeGames.set(gameId, updatedGame.toJSON());

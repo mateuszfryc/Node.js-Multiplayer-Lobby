@@ -28,30 +28,30 @@ export class UserModel {
     };
     return this.model.create(data);
   }
-  async findUserByName(user_name) {
-    return this.model.findOne({ where: { user_name } });
-  }
-  async findUserById(id) {
+  async findById(id) {
     return this.model.findOne({ where: { id } });
   }
-  async updateUser(id, newData) {
+  async findByUserName(user_name) {
+    return this.model.findOne({ where: { user_name } });
+  }
+  async update(id, newData) {
     return this.model.update(newData, { where: { id } });
   }
-  async loginUser(user, refreshToken) {
+  async login(user, refreshToken) {
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-    await this.updateUser(user.id, {
+    await this.update(user.id, {
       refresh_token: hashedRefreshToken,
       updated_at: dayjs().toISOString(),
     });
   }
-  async logoutUser(userId) {
-    await this.updateUser(userId, {
+  async logout(userId) {
+    await this.update(userId, {
       refresh_token: null,
       updated_at: dayjs().toISOString(),
     });
   }
 
-  async deleteUser(userId) {
+  async delete(userId) {
     return this.model.destroy({ where: { id: userId } });
   }
 }

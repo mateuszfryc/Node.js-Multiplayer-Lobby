@@ -20,7 +20,7 @@ export const getUserAction = (database) => async (req, res) => {
     return jsonRes(res, 'Bad Request', [], 400);
   }
 
-  const user = await database.user.findUserById(user_id);
+  const user = await database.user.findById(user_id);
   if (!user) {
     logger.warn('User not found for user_id', { user_id });
     return jsonRes(res, 'Bad Request', [], 404);

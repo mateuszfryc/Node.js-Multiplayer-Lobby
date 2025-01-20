@@ -32,7 +32,7 @@ export const createUserAction =
       logger.warn('Invalid player_name format in /api_v1/register');
       return jsonRes(res, 'Request failed', [], 400);
     }
-    const existing = await database.user.findUserByName(user_name);
+    const existing = await database.user.findByUserName(user_name);
     if (existing) {
       logger.warn('Attempt to create existing user');
       return jsonRes(res, 'Request failed', [], 400);
@@ -47,7 +47,7 @@ export const createUserAction =
     logger.info('New user created successfully');
     const token = uuidv4();
     const exp = dayjs().add(1, 'day').toISOString();
-    await database.activation.createActivation({
+    await database.activation.create({
       user_id: newUser.id,
       token,
       created_at: now,

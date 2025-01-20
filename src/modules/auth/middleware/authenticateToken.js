@@ -31,7 +31,7 @@ export const authenticateToken = (database) => async (req, res, next) => {
       logger.info('Token expired', { error: e.message });
       const expired = jwt.decode(accessToken);
       if (expired?.id) {
-        // await database.user.logoutUser(expired.id);
+        // await database.user.logout(expired.id);
         // logger.info('User logged out due to expired token', {
         //   userId: expired.id,
         // });

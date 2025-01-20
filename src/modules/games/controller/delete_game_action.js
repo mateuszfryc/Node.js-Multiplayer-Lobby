@@ -25,14 +25,14 @@ export const deleteGameAction =
       logger.warn('Unauthorized attempt to delete game');
       return jsonRes(res, 'Unauthorized', [], 401);
     }
-    await database.game.deleteGame(gameId);
+    await database.game.delete(gameId);
     activeGames.delete(gameId);
     websockets.emit('game_deleted', { id: gameId });
-    const ownerUser = await database.user.findUserById(game.owner_id);
+    const ownerUser = await database.user.findById(game.owner_id);
     const updatedHostedGames = ownerUser.hosted_games.filter(
       (g) => g !== gameId
     );
-    await database.user.updateUser(ownerUser.id, {
+    await database.user.update(ownerUser.id, {
       hosted_games: updatedHostedGames,
     });
     logger.info('Game deleted successfully');
