@@ -15,6 +15,7 @@ export const envDefinitions = [
   { key: 'ADMIN_USER_NAME' },
   { key: 'ADMIN_PASSWORD' },
   { key: 'ADMIN_PLAYER_NAME' },
+  { key: 'ALLOW_USER_REGISTRATION', log: true },
 
   // database
   { key: 'DB_USER' },

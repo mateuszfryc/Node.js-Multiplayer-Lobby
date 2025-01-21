@@ -12,7 +12,9 @@ export const createUserAction =
   (database, envs, mailer) => async (req, res) => {
     const { requestingUser } = req.body;
     const { user_name, password, player_name } = req.body;
-    if (!requestingUser || requestingUser.role !== 'admin') {
+    const notAdmin = !requestingUser || requestingUser.role !== 'admin';
+
+    if (!envs.ALLOW_USER_REGISTRATION && notAdmin) {
       logger.warn('Non-admin attempted to create new user');
       return jsonRes(res, 'Request failed', [], 400);
     }

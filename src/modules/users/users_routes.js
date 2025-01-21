@@ -13,6 +13,16 @@ export const usersRoutes = (baseUrl, services) => {
   const { database, envs, mailer, activeGames, websockets } = services;
   const auth = authenticateToken(database);
 
+  if (envs.ALLOW_USER_REGISTRATION) {
+    router
+      .route(`${baseUrl}/users`)
+      .post(bounds(createUserAction(database, envs, mailer)));
+  } else {
+    router
+      .route(`${baseUrl}/users`)
+      .post(auth, bounds(createUserAction(database, envs, mailer)));
+  }
+
   router
     .route(`${baseUrl}/users/:user_id`)
     .get(auth, bounds(getUserAction(database)))
@@ -22,10 +32,6 @@ export const usersRoutes = (baseUrl, services) => {
   router
     .route(`${baseUrl}/users/verify/:token`)
     .get(bounds(confirmUserAction(database)));
-
-  router
-    .route(`${baseUrl}/users`)
-    .post(auth, bounds(createUserAction(database, envs, mailer)));
 
   return router;
 };
