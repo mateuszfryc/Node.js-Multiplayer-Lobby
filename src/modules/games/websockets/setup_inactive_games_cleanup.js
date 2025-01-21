@@ -1,5 +1,5 @@
 import { logger } from '#config/logger.js';
-import { GameModel } from '#games/models/game_model.js';
+import { GamesRepository } from '#games/persistence/games_repository.js';
 
 const checkGameResponsiveness = async (
   database,
@@ -16,13 +16,13 @@ const checkGameResponsiveness = async (
     envs.GAME_HEARTBEAT_INTERVAL * envs.NUMBER_OF_ALLOWED_SKIPPED_HEARTBEATS;
 
   if (
-    game.status !== GameModel.STATUS_UNRESPONSIVE &&
+    game.status !== GamesRepository.STATUS_UNRESPONSIVE &&
     secondsDelta > unreachableTime
   ) {
-    await database.game.setStatus(gameId, GameModel.STATUS_UNRESPONSIVE);
+    await database.game.setStatus(gameId, GamesRepository.STATUS_UNRESPONSIVE);
     activeGames.set(gameId, {
       ...game,
-      status: GameModel.STATUS_UNRESPONSIVE,
+      status: GamesRepository.STATUS_UNRESPONSIVE,
     });
     websockets.emit('game_unresponsive', { id: gameId });
     logger.warn('Game marked as unresponsive due to missing heartbeats', {

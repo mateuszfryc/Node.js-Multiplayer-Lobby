@@ -1,4 +1,4 @@
-export class ActivationModel {
+export class ActivationsRepository {
   constructor(model) {
     this.model = model;
   }

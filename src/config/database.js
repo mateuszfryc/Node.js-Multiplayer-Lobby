@@ -1,8 +1,8 @@
+import { ActivationsRepository } from '#auth/persistence/activations_repository.js';
 import { logger } from '#config/logger.js';
-import { GameModel } from '#games/models/game_model.js';
-import { UserModel } from '#users/models/user_model.js';
+import { GamesRepository } from '#games/persistence/games_repository.js';
+import { UsersRepository } from '#users/persistence/users_repository.js';
 import { Sequelize } from 'sequelize';
-import { ActivationModel } from './models/activation_mode.js';
 
 /* This class abstracts away database implementation. */
 export class DatabaseManager {
@@ -30,9 +30,11 @@ export class DatabaseManager {
           : {},
       }
     );
-    this.user = new UserModel(inUsersSchema(this.sequelize));
-    this.game = new GameModel(inGamesSchema(this.sequelize));
-    this.activation = new ActivationModel(inActivationsSchema(this.sequelize));
+    this.user = new UsersRepository(inUsersSchema(this.sequelize));
+    this.game = new GamesRepository(inGamesSchema(this.sequelize));
+    this.activation = new ActivationsRepository(
+      inActivationsSchema(this.sequelize)
+    );
   }
 
   async init(database, envs, activeGames) {

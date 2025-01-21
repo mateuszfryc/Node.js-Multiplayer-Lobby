@@ -29,19 +29,19 @@ import { Server as SocketIOServer } from 'socket.io';
 import 'winston-daily-rotate-file';
 
 import { authRoutes } from '#auth/auth_routes.js';
+import { activationsSchema } from '#auth/persistence/activations_schema.js';
 import { errorBoundry } from '#config/bounds.js';
+import { DatabaseManager } from '#config/database.js';
 import { helmetMid } from '#config/helmet.js';
 import { limiter } from '#config/limiter.js';
 import { logger, requestLogger } from '#config/logger.js';
 import { transporter } from '#config/smpt.js';
 import { gamesRoutes } from '#games/games_routes.js';
-import { gamesSchema } from '#games/schema/games_schema.js';
+import { gamesSchema } from '#games/persistence/games_schema.js';
 import { websocketsJwtAuth } from '#games/websockets/auth_middleware.js';
 import { setupGamesFeed } from '#games/websockets/setup_games_feed.js';
 import { setupInactiveGamesCleanup } from '#games/websockets/setup_inactive_games_cleanup.js';
-import { DatabaseManager } from '#persistence/DatabaseManager.js';
-import { activationsSchema } from '#persistence/schema/activations_schema.js';
-import { userSchema } from '#users/schema/users_schema.js';
+import { userSchema } from '#users/persistence/users_schema.js';
 import { usersRoutes } from '#users/users_routes.js';
 
 const app = express();

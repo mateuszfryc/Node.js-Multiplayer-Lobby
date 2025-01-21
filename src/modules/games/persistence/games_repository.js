@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import dayjs from 'dayjs';
 import { v4 as uuidv4 } from 'uuid';
 
-export class GameModel {
+export class GamesRepository {
   static STATUS_ALIVE = 'alive';
   static STATUS_UNRESPONSIVE = 'unresponsive';
 
@@ -52,7 +52,7 @@ export class GameModel {
       created_at: now,
       updated_at: now,
       last_host_action_at: now,
-      status: GameModel.STATUS_ALIVE,
+      status: GamesRepository.STATUS_ALIVE,
     };
     return this.model.create(data);
   }
@@ -63,7 +63,10 @@ export class GameModel {
 
   async setStatus(id, status) {
     if (
-      ![GameModel.STATUS_ALIVE, GameModel.STATUS_UNRESPONSIVE].includes(status)
+      ![
+        GamesRepository.STATUS_ALIVE,
+        GamesRepository.STATUS_UNRESPONSIVE,
+      ].includes(status)
     ) {
       logger.error(`Invalid game status value: ${status}`);
       return;
@@ -77,7 +80,7 @@ export class GameModel {
 
   async refresh(id) {
     return this.model.update(
-      { last_host_action_at: new Date(), status: GameModel.STATUS_ALIVE },
+      { last_host_action_at: new Date(), status: GamesRepository.STATUS_ALIVE },
       { where: { id } }
     );
   }

@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import dayjs from 'dayjs';
 import { v4 as uuidv4 } from 'uuid';
 
-export class UserModel {
+export class UsersRepository {
   constructor(model) {
     this.model = model;
   }
