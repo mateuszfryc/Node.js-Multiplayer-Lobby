@@ -1,4 +1,4 @@
-# Game Agnostic Lobby Server (GALS)
+# Node.js Game Agnostic Lobby Server (N.GALS)
 
 Game Agnostic Lobby Server (GALS) is a simple and secure Node.js server designed to manage player authentication, creating and joining games as well as Websocket based games feed of currently hosted games. The server is **game-agnostic**, it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits Your requirements.
 
