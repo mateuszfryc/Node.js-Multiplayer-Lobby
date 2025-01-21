@@ -26,6 +26,9 @@ export const updateGameAction =
     const newData = { ...req.body };
     delete newData.requestingUser;
     await database.game.update(gameId, newData);
+    if (gameCheck.owner_id === requestingUser.id) {
+      await database.game.refresh(gameId);
+    }
     logger.debug('Game updated in database');
     const updatedGame = await database.game.findById(gameId);
     activeGames.set(gameId, updatedGame.toJSON());

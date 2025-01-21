@@ -20,25 +20,25 @@ export const authenticateToken = (database) => async (req, res, next) => {
     logger.warn('No access token found in Authorization header');
     return jsonRes(res, 'Unauthorized', [], 401);
   }
-
   try {
     const decodedUser = jwt.verify(accessToken, process.env.JWT_SECRET ?? '');
+
+    // this check is very important to avoid passing valid tokens with invalid id
+    const user = await database.user.findById(decodedUser.id);
+    if (!user) {
+      logger.warn('User not found in database', { userId: decodedUser.id });
+      return jsonRes(res, 'Unauthorized', [], 401);
+    }
     logger.debug('Token decoded successfully', { role: decodedUser.role });
     req.body.requestingUser = decodedUser;
     next();
   } catch (e) {
     if (e.name === 'TokenExpiredError') {
       logger.info('Token expired', { error: e.message });
-      const expired = jwt.decode(accessToken);
-      if (expired?.id) {
-        // await database.user.logout(expired.id);
-        // logger.info('User logged out due to expired token', {
-        //   userId: expired.id,
-        // });
-        logger.warn('Token expired', { userId: expired.id });
-      }
+    } //
+    else {
+      logger.error('Failed to authenticate token', { error: e.message });
     }
-    logger.error('Failed to authenticate token', { error: e.message });
     return jsonRes(res, 'Unauthorized', [], 401);
   }
 };

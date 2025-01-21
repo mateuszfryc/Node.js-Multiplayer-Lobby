@@ -38,6 +38,7 @@ import { gamesRoutes } from '#games/games_routes.js';
 import { gamesSchema } from '#games/schema/games_schema.js';
 import { websocketsJwtAuth } from '#games/websockets/auth_middleware.js';
 import { setupGamesFeed } from '#games/websockets/setup_games_feed.js';
+import { setupInactiveGamesCleanup } from '#games/websockets/setup_inactive_games_cleanup.js';
 import { DatabaseManager } from '#persistence/DatabaseManager.js';
 import { activationsSchema } from '#persistence/schema/activations_schema.js';
 import { userSchema } from '#users/schema/users_schema.js';
@@ -48,7 +49,6 @@ app.use(express.json({ strict: true }));
 app.use(helmetMid);
 app.use(limiter);
 app.use(requestLogger);
-app.use(errorBoundry);
 
 if (envs.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
@@ -89,12 +89,22 @@ const baseUrl = '/api_v1';
 ]
 .forEach((initRoutes) => app.use(initRoutes(baseUrl, services)));
 
-websockets.use(websocketsJwtAuth(envs));
-websockets.on('connection', setupGamesFeed(activeGames));
+app.use(errorBoundry);
 
-app.get('/health', (req, res) => {
-  res.status(200).send('Server is healthy');
+websockets.use(websocketsJwtAuth(envs));
+websockets.on('connection', (socket) => {
+  setupGamesFeed(database, activeGames)(socket);
+  socket.on('host_heartbeat', async ({ game_id }) => {
+    await database.games.refresh(game_id);
+    const updatedGame = await database.games.findById(game_id);
+    if (updatedGame) activeGames.set(game_id, updatedGame.toJSON());
+  });
 });
+
+setInterval(
+  setupInactiveGamesCleanup(database, websockets, activeGames, envs),
+  envs.GAME_HEARTBEAT_INTERVAL * 1000
+);
 
 app.all('*', (req, res) => {
   logger.warn('Unhandled route', {

@@ -17,6 +17,8 @@ export const gamesSchema = (database_manager) =>
         private: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
         password: { type: DataTypes.STRING, allowNull: false, defaultValue: '' },
         ping: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+        last_host_action_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+        status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'alive' },
       },
     {
       tableName: 'games',

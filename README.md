@@ -52,14 +52,14 @@ Game Agnostic Lobby Server (GALS) is a simple and secure Node.js server designed
 
 - Creates new game.
 - Makes REST request to the server to create new game.
-- Receives response from server with new game id, its data, GAME_INACTIVE_INTERVAL and GAME_INACTIVE_TIMEOUT values.
+- Receives response from server with new game id, its data, GAME_INACTIVE_INTERVAL and GAME_IS_DEAD_TIMEOUT values.
 - Is now ready to receive **direct** join requests from other clients.
 - Manages game lifecycle on its own - the **SERVER** doesn't care about the course of the game.
 - Manages joining and leaving players independently from the **SERVER** BUT should inform the **SERVER** about the game state changes.
 - Sends REST delete request to the **SERVER** when the host decides to.
 - Sends periodic Websocket messages in short intervals defined by GAME_INACTIVE_INTERVAL (in seconds) to the server to keep the game alive on the **SERVER**.
 - If the **HOST** will skip the hartbeat due to crash or any internal issues it should resume sending the periodic heartbeat messages to the server to keep the game alive on the **SERVER**. If it does the game "unresponsive" status will be removed from that game.
-- **HOST** can (but doesn't have to) save the last heartbeat response time and compere that to the GAME_INACTIVE_TIMEOUT value to decide if it should stop sending the heartbeat messages and delete the game.
+- **HOST** can (but doesn't have to) save the last heartbeat response time and compere that to the GAME_IS_DEAD_TIMEOUT value to decide if it should stop sending the heartbeat messages and delete the game.
 - Provides (or not) clients with the reconnect functionality.
 - Stays connected to Websocket feed to be able to quickly inform players in the lobby about game changes.
 - If the host must be able to kick or ban players from that game it must implement it's own logic to handle that and disallow those player form joining the game upon their direct join attempt. The game for kicked/banned **CLIENT**s will be still visible in the Websocket feed.
@@ -73,9 +73,9 @@ Game Agnostic Lobby Server (GALS) is a simple and secure Node.js server designed
 - Whenever receives game udpate from **HOST**s propagates that update to all clients connected to Websocket feed.
 - If the **HOST** doesn't send periodic heartbeat messages for the game, the **SERVER** will set it's status to "unresponsive" and send game feed update to all clients connected to Websocket feed.
 - If the **HOST** will resume sending the periodic heartbeat messages to the server the game "unresponsive" status will be removed from that game and the game feed update will be sent to all clients connected to Websocket feed.
-- If the **HOST** won't resume sending the periodic heartbeat messages to the server before the GAME_INACTIVE_TIMEOUT runes out the game will be deleted and the game feed update will be sent to all clients connected to Websocket feed. Event if the **HOST** manages to send the heartbeat message after the game deletion the game will not be restored and any attempts to change or delete the game will be rejected as 404 - not found/bad request.
+- If the **HOST** won't resume sending the periodic heartbeat messages to the server before the GAME_IS_DEAD_TIMEOUT runes out the game will be deleted and the game feed update will be sent to all clients connected to Websocket feed. Event if the **HOST** manages to send the heartbeat message after the game deletion the game will not be restored and any attempts to change or delete the game will be rejected as 404 - not found/bad request.
 - In the unlikely scenerio where user being deleted has any games hosted the server will delete those games and send game feed update to all clients connected to Websocket feed.
-- Based on MULTIPLE_GAMES_PER_HOST value **SERVER** can allow/disallow **HOST**s to host multiple games at once. It should depend on game's multiple factors.
+- Based on ALLOW_MULTIPLE_GAMES_PER_HOST value **SERVER** can allow/disallow **HOST**s to host multiple games at once. It should depend on game's multiple factors.
 
 **CLIENT**:
 
@@ -132,8 +132,8 @@ ADMIN_USER_NAME=admin@example.com
 ADMIN_PASSWORD=AdminPass123!
 ADMIN_PLAYER_NAME=AdminPlayer
 GAME_INACTIVE_INTERVAL=30 (seconds)
-GAME_INACTIVE_TIMEOUT=120 (seconds)
-MULTIPLE_GAMES_PER_HOST=false
+GAME_IS_DEAD_TIMEOUT=120 (seconds)
+ALLOW_MULTIPLE_GAMES_PER_HOST=false
 ```
 
 ### 4. Start the Server

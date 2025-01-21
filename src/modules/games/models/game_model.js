@@ -1,20 +1,28 @@
+import { logger } from '#config/logger.js';
 import bcrypt from 'bcrypt';
 import dayjs from 'dayjs';
 import { v4 as uuidv4 } from 'uuid';
 
 export class GameModel {
+  static STATUS_ALIVE = 'alive';
+  static STATUS_UNRESPONSIVE = 'unresponsive';
+
   constructor(model) {
     this.model = model;
   }
+
   async findAll() {
     return this.model.findAll();
   }
+
   async findByIpPort(ip, port) {
     return this.model.findOne({ where: { ip, port } });
   }
+
   async findById(id) {
     return this.model.findOne({ where: { id } });
   }
+
   async create(
     ownerId,
     ip,
@@ -43,13 +51,34 @@ export class GameModel {
       ping: 0,
       created_at: now,
       updated_at: now,
+      last_host_action_at: now,
+      status: GameModel.STATUS_ALIVE,
     };
     return this.model.create(data);
   }
+
   async update(id, newData) {
     return this.model.update(newData, { where: { id } });
   }
+
+  async setStatus(id, status) {
+    if (
+      ![GameModel.STATUS_ALIVE, GameModel.STATUS_UNRESPONSIVE].includes(status)
+    ) {
+      logger.error(`Invalid game status value: ${status}`);
+      return;
+    }
+    return this.model.update({ status }, { where: { id } });
+  }
+
   async delete(id) {
     return this.model.destroy({ where: { id } });
+  }
+
+  async refresh(id) {
+    return this.model.update(
+      { last_host_action_at: new Date(), status: GameModel.STATUS_ALIVE },
+      { where: { id } }
+    );
   }
 }
