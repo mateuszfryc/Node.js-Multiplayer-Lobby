@@ -42,49 +42,40 @@ Game Agnostic Lobby Server (GALS) is a simple and secure Node.js server designed
 - **Matchmaking:** This server is not intended to be used for matchmaking. It is designed to be a lobby server where players can create and search games.
 - **Join/Leave Management:** This server does not manage player joining or leaving games. It is up to the game host to manage this.
 
-## Intended games flow
-
-- All of the below actions (REST or Websocket) require verified user account and authentication (login).
-- Host is also a player (client).
-- GALS doesn't dictate if the user account can by created by user or not. Server owner can decide to switch ALLOW_USER_REGISTRATION environment variable on/off to allow/disallow user registration wihtout admin role.
-
-**HOST**:
-
-- Creates new game.
-- Makes REST request to the server to create new game.
-- Receives response from server with new game id, its data, GAME_INACTIVE_INTERVAL and GAME_IS_DEAD_TIMEOUT values.
-- Is now ready to receive **direct** join requests from other clients.
-- Manages game lifecycle on its own - the **SERVER** doesn't care about the course of the game.
-- Manages joining and leaving players independently from the **SERVER** BUT should inform the **SERVER** about the game state changes.
-- Sends REST delete request to the **SERVER** when the host decides to.
-- Sends periodic Websocket messages in short intervals defined by GAME_INACTIVE_INTERVAL (in seconds) to the server to keep the game alive on the **SERVER**.
-- If the **HOST** will skip the hartbeat due to crash or any internal issues it should resume sending the periodic heartbeat messages to the server to keep the game alive on the **SERVER**. If it does the game "unresponsive" status will be removed from that game.
-- **HOST** can (but doesn't have to) save the last heartbeat response time and compere that to the GAME_IS_DEAD_TIMEOUT value to decide if it should stop sending the heartbeat messages and delete the game.
-- Provides (or not) clients with the reconnect functionality.
-- Stays connected to Websocket feed to be able to quickly inform players in the lobby about game changes.
-- If the host must be able to kick or ban players from that game it must implement it's own logic to handle that and disallow those player form joining the game upon their direct join attempt. The game for kicked/banned **CLIENT**s will be still visible in the Websocket feed.
+## Intended Games Flow
 
 **SERVER**:
 
-- Receives request to create new game.
-- Creates new game in database.
-- Sends response to **HOST** with new game id, its data and GAME_INACTIVE_INTERVAL.
-- Sends game feed update to all clients connected to Websocket feed with new game data.
-- Whenever receives game udpate from **HOST**s propagates that update to all clients connected to Websocket feed.
-- If the **HOST** doesn't send periodic heartbeat messages for the game, the **SERVER** will set it's status to "unresponsive" and send game feed update to all clients connected to Websocket feed.
-- If the **HOST** will resume sending the periodic heartbeat messages to the server the game "unresponsive" status will be removed from that game and the game feed update will be sent to all clients connected to Websocket feed.
-- If the **HOST** won't resume sending the periodic heartbeat messages to the server before the GAME_IS_DEAD_TIMEOUT runes out the game will be deleted and the game feed update will be sent to all clients connected to Websocket feed. Event if the **HOST** manages to send the heartbeat message after the game deletion the game will not be restored and any attempts to change or delete the game will be rejected as 404 - not found/bad request.
-- In the unlikely scenerio where user being deleted has any games hosted the server will delete those games and send game feed update to all clients connected to Websocket feed.
-- Based on ALLOW_MULTIPLE_GAMES_PER_HOST value **SERVER** can allow/disallow **HOST**s to host multiple games at once. It should depend on game's multiple factors.
+- Requires authentication for all actions (REST or Websocket), except for account creation (if enabled by `ALLOW_USER_REGISTRATION`) and email confirmation.
+- Handles requests to create new games, stores them in the database, and responds to the **HOST** with the game ID, data, and `GAME_HEARTBEAT_INTERVAL` value.
+- Provides a real-time feed of active games to all connected **CLIENT**s.
+- Marks a game as "unresponsive" and updates the game feed if the **HOST** misses heartbeat messages.
+- Removes the "unresponsive" status if the **HOST** resumes sending heartbeat messages.
+- Deletes the game if the **HOST** fails to send heartbeat messages before `INACTIVE_GAME_TIMEOUT` expires.
+- Deletes games hosted by users upon their deletion.
+- Allows multiple games per **CLIENT** based on `ALLOW_MULTIPLE_GAMES_PER_HOST`.
+- Does not support reconnecting **CLIENT**s to the **HOST**.
+
+**HOST**:
+
+- Acts as both a player and a host.
+- Sends a REST request to create a new game and receives the game ID, data, and `GAME_HEARTBEAT_INTERVAL`.
+- Manages player join/leave independently but informs the **SERVER** of game state changes via REST.
+- Manages the game lifecycle independently; the **SERVER** does not manage game progress.
+- Sends a REST delete request to remove the game from the server.
+- Sends periodic REST messages at intervals defined by `GAME_HEARTBEAT_INTERVAL` to keep the game active.
+- Resumes sending heartbeat messages if missed, removing the "unresponsive" status.
+- Informs the **SERVER** of game state changes via REST.
+- Implements its own logic for kicking or banning players, as the **SERVER** does not handle this.
 
 **CLIENT**:
 
-- Connects to a Websocket feed to get list of currently hosted games
-- Decides which information to display in the client's game lobby, including "unresponsive" games status
-- Once game is found, sends direct join request to that game's **HOST** AND **leaves the Websocket feed** (to save resources)
-- Since join and leave action happens between **HOST** and the **CLIENT** the latter can decide to joint the game with "unresponsive" status and wait for the **HOST** connection or not. Implementing "cancel connection" functionality is up to the **CLIENT**.
-- Through the entire game communicates with **HOST** independently from the **SERVER**
-- When the game is over or client decides to leave, it can connect to the Websocket feed again to search for other games
+- Connects to the Websocket feed to get a list of active games.
+- Displays relevant game information, including "unresponsive" statuses.
+- Sends a join request directly to the **HOST** and disconnects from the Websocket feed once a game is found.
+- Can join "unresponsive" games and wait for the **HOST** or cancel the connection.
+- Communicates with the **HOST** independently during the game.
+- Reconnects to the Websocket feed to search for other games when the game ends or the client leaves.
 
 ---
 
@@ -131,8 +122,10 @@ FROM_EMAIL=no-reply@example.com
 ADMIN_USER_NAME=admin@example.com
 ADMIN_PASSWORD=AdminPass123!
 ADMIN_PLAYER_NAME=AdminPlayer
-GAME_INACTIVE_INTERVAL=30 (seconds)
-GAME_IS_DEAD_TIMEOUT=120 (seconds)
+ALLOW_USER_REGISTRATION=false
+GAME_HEARTBEAT_INTERVAL=10
+NUMBER_OF_ALLOWED_SKIPPED_HEARTBEATS=3
+INACTIVE_GAME_TIMEOUT=3600
 ALLOW_MULTIPLE_GAMES_PER_HOST=false
 ```
 
@@ -154,6 +147,8 @@ NODE_ENV=production npm start
 
 ## API Endpoints
 
+### API Endpoints
+
 ### **Authentication**
 
 | Method | Endpoint          | Description          |
@@ -164,12 +159,13 @@ NODE_ENV=production npm start
 
 ### **User Management**
 
-| Method | Endpoint                 | Description           |
-| ------ | ------------------------ | --------------------- |
-| POST   | `/api_v1/user`           | Create a new user     |
-| PATCH  | `/api_v1/user`           | Update user details   |
-| DELETE | `/api_v1/user/:userId`   | Delete a user         |
-| GET    | `/api_v1/confirm/:token` | Confirm email address |
+| Method | Endpoint                      | Description           |
+| ------ | ----------------------------- | --------------------- |
+| POST   | `/api_v1/users`               | Create a new user     |
+| GET    | `/api_v1/users/:user_id`      | Get user details      |
+| PUT    | `/api_v1/users/:user_id`      | Update user details   |
+| DELETE | `/api_v1/users/:user_id`      | Delete a user         |
+| GET    | `/api_v1/users/verify/:token` | Confirm email address |
 
 ### **Game Management**
 
@@ -179,18 +175,18 @@ NODE_ENV=production npm start
 | POST   | `/api_v1/games`               | Create a new game     |
 | PUT    | `/api_v1/games/:gameId`       | Update game details   |
 | DELETE | `/api_v1/games/:gameId`       | Delete a game         |
-| POST   | `/api_v1/games/:gameId/join`  | Delete a game         |
-| POST   | `/api_v1/games/:gameId/leave` | Delete a game         |
+| POST   | `/api_v1/games/:gameId/join`  | Join a game           |
+| POST   | `/api_v1/games/:gameId/leave` | Leave a game          |
 
 ---
 
 ## Testing
 
-Server simplicity allows to manually test it with tools like Postman, which is the approach I took. Look into **doc** directory for postman collection export file.
+Manually test the server using tools like Postman. A Postman collection export file is available in the **doc** directory.
 
 ## Contributing
 
-Contributions are welcome! I am by no means senior backend developer, I do hope this will be refined over time with Your help. Submit a pull request and give me some time to respond.
+Contributions are welcome! Submit a pull request and allow me some time for review.
 
 ---
 
