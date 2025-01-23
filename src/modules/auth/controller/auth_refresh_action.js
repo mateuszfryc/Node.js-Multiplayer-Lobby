@@ -6,22 +6,22 @@ import jwt from 'jsonwebtoken';
 export const refreshAction = (database, envs) => async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) {
-    logger.warn('Refresh token missing');
+    logger.warn('Refresh authentication missing');
     return jsonRes(res, 'Bad Request', [], 400);
   }
   const decodedUser = jwt.verify(refreshToken, envs.JWT_REFRESH_SECRET ?? '');
   if (!decodedUser) {
-    logger.warn('Invalid refresh token');
+    logger.warn('Invalid refresh authentication');
     return jsonRes(res, 'Unauthorized', [], 401);
   }
   const user = await database.user.findById(decodedUser.id);
   if (!user) {
-    logger.warn('User not found for refresh token');
+    logger.warn('User not found for refresh authentication');
     return jsonRes(res, 'Unauthorized', [], 401);
   }
   const match = await bcrypt.compare(refreshToken, user.refresh_token ?? '');
   if (!match) {
-    logger.warn('Refresh token mismatch');
+    logger.warn('Refresh authentication mismatch');
     return jsonRes(res, 'Unauthorized', [], 401);
   }
   const newAccessToken = jwt.sign(
@@ -35,7 +35,7 @@ export const refreshAction = (database, envs) => async (req, res) => {
     { expiresIn: '7d' }
   );
   await database.user.login(user, newRefreshToken);
-  logger.info('Token refreshed successfully');
+  logger.info('Authentication refreshed successfully');
   const data = { accessToken: newAccessToken, refreshToken: newRefreshToken };
   return jsonRes(res, '', data, 200);
 };

@@ -1,4 +1,5 @@
 import { logger } from '#config/logger.js';
+import { gamesFeedEvents } from '#games/websockets/setup_games_feed.js';
 import { jsonRes } from '#utils/response.js';
 
 export const leaveGameAction =
@@ -38,7 +39,7 @@ export const leaveGameAction =
         connected_players: connectedPlayers,
       });
       activeGames.set(gameId, gameData);
-      websockets.emit('game_update', gameData);
+      websockets.emit(gamesFeedEvents.gamesUpdate, gameData);
       logger.info('Player left the game', {
         connectedPlayersCount: connectedPlayers.length,
       });

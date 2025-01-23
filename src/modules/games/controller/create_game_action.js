@@ -1,5 +1,6 @@
 import { USER_CHARS } from '#config/consts.js';
 import { logger } from '#config/logger.js';
+import { gamesFeedEvents } from '#games/websockets/setup_games_feed.js';
 import { jsonRes } from '#utils/response.js';
 import { validateIpOrLocalhost, validatePort } from '#utils/validators.js';
 
@@ -73,7 +74,7 @@ export const createGameAction =
       password
     );
     activeGames.set(newGame.id, newGame.toJSON());
-    websockets.emit('new_game', newGame);
+    websockets.emit(gamesFeedEvents.gameCreated, newGame);
     logger.info('Game created successfully', {
       game_name,
       map_name,

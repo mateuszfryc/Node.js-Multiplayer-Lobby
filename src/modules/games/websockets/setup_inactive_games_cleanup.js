@@ -1,5 +1,6 @@
 import { logger } from '#config/logger.js';
 import { GamesRepository } from '#games/persistence/games_repository.js';
+import { gamesFeedEvents } from './setup_games_feed.js';
 
 const checkGameResponsiveness = async (
   database,
@@ -24,7 +25,7 @@ const checkGameResponsiveness = async (
       ...game,
       status: GamesRepository.STATUS_UNRESPONSIVE,
     });
-    websockets.emit('game_unresponsive', { id: gameId });
+    websockets.emit(gamesFeedEvents.gameUnresponsive, { id: gameId });
     logger.warn('Game marked as unresponsive due to missing heartbeats', {
       id: gameId,
     });
@@ -49,7 +50,7 @@ const checkGameResponsiveness = async (
     await database.user.update(ownerId, { hosted_games: hostedGames });
     await database.game.delete(gameId);
     activeGames.delete(gameId);
-    websockets.emit('game_deleted', { id: gameId });
+    websockets.emit(gamesFeedEvents.gameDeleted, { id: gameId });
     logger.warn('Game deleted due to inactivity', { id: gameId });
     return;
   }

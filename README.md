@@ -1,6 +1,6 @@
-# Node.js Game Agnostic Lobby Server (N.GALS)
+# Node.js Lobby for Multiplayer Games (with Authentication)
 
-Game Agnostic Lobby Server (GALS) is a simple and secure Node.js server designed to manage player authentication, creating and joining games as well as Websocket based games feed of currently hosted games. The server is **game-agnostic**, it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits Your requirements.
+Node.js Lobby for Multiplayer Games (NLMG) is a simple and secure Node.js server designed to manage player authentication, creating and joining games as well as Websocket based games feed of currently hosted games. The server is **game-agnostic**, it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits game requirements.
 
 ## Features
 
@@ -34,13 +34,13 @@ Game Agnostic Lobby Server (GALS) is a simple and secure Node.js server designed
 
 **Websockets Games Feed**
 
-- Real-time updates for hosted games status changes. Intended for player searching for games.
+- Real-time updates for hosted games status changes. Intended for players searching for games.
 - Socket.IO integration for game feed updates.
 
-## What GALS doesn't do?
+## What NLMG doesn't do?
 
 - **Matchmaking:** This server is not intended to be used for matchmaking. It is designed to be a lobby server where players can create and search games.
-- **Join/Leave Management:** This server does not manage player joining or leaving games. It is up to the game host to manage this.
+- **Join/Leave Management:** This server does not manage player joining or leaving games. It is up to the game host to manage this. There are optional REST endpoints for joining and leaving games, but they are not included in the intended flow.
 
 ## Intended Games Flow
 
@@ -81,27 +81,11 @@ Game Agnostic Lobby Server (GALS) is a simple and secure Node.js server designed
 
 ## Setup Instructions
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/your-username/game-agnostic-lobby-server.git
-cd game-agnostic-lobby-server
-```
-
-### 2. Install Dependencies
-
-```bash
-npm install
-```
-
-### 3. Configure Environment Variables
-
-Create the following `.env` files in the project root (or use `.env.db`, `.env.auth`, and `.env.prod.*` as needed):
-
-#### `.env` Example:
+1. Clone the Repository: `git clone`;
+2. `cd` into the project directory;
+3. Create the following `.env` file in the project root:
 
 ```env
-NODE_ENV=development
 PORT=3000
 JWT_SECRET=your_jwt_secret
 JWT_REFRESH_SECRET=your_refresh_secret
@@ -129,25 +113,20 @@ INACTIVE_GAME_TIMEOUT=3600
 ALLOW_MULTIPLE_GAMES_PER_HOST=false
 ```
 
-### 4. Start the Server
-
-#### Development Mode:
+4. Install dependencies: `npm install`;
+5. Start the server:
 
 ```bash
+# Development:
 npm run dev
 ```
 
-#### Production Mode:
-
 ```bash
-NODE_ENV=production npm start
+# Production:
+npm run prod
 ```
 
----
-
 ## API Endpoints
-
-### API Endpoints
 
 ### **Authentication**
 
@@ -162,21 +141,27 @@ NODE_ENV=production npm start
 | Method | Endpoint                      | Description           |
 | ------ | ----------------------------- | --------------------- |
 | POST   | `/api_v1/users`               | Create a new user     |
+| GET    | `/api_v1/users/verify/:token` | Confirm email address |
 | GET    | `/api_v1/users/:user_id`      | Get user details      |
 | PUT    | `/api_v1/users/:user_id`      | Update user details   |
 | DELETE | `/api_v1/users/:user_id`      | Delete a user         |
-| GET    | `/api_v1/users/verify/:token` | Confirm email address |
 
 ### **Game Management**
 
-| Method | Endpoint                      | Description           |
-| ------ | ----------------------------- | --------------------- |
-| GET    | `/api_v1/games`               | Get list of all games |
-| POST   | `/api_v1/games`               | Create a new game     |
-| PUT    | `/api_v1/games/:gameId`       | Update game details   |
-| DELETE | `/api_v1/games/:gameId`       | Delete a game         |
-| POST   | `/api_v1/games/:gameId/join`  | Join a game           |
-| POST   | `/api_v1/games/:gameId/leave` | Leave a game          |
+| Method | Endpoint                          | Description           |
+| ------ | --------------------------------- | --------------------- |
+| GET    | `/api_v1/games`                   | Get list of all games |
+| POST   | `/api_v1/games`                   | Create a new game     |
+| PUT    | `/api_v1/games/:gameId/heartbeat` | Keep game alive       |
+| PUT    | `/api_v1/games/:gameId`           | Update game details   |
+| DELETE | `/api_v1/games/:gameId`           | Delete a game         |
+
+Optinal endpoints, not included in the final flow:
+
+| Method | Endpoint                      | Description  |
+| ------ | ----------------------------- | ------------ |
+| POST   | `/api_v1/games/:gameId/join`  | Join a game  |
+| POST   | `/api_v1/games/:gameId/leave` | Leave a game |
 
 ---
 

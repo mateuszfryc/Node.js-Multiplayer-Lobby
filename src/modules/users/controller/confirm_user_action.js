@@ -8,12 +8,12 @@ export const confirmUserAction = (database) => async (req, res) => {
   const activation = await database.activation.findByToken(token);
 
   if (!activation) {
-    logger.warn('Invalid token used for email confirmation');
+    logger.warn('Invalid authentication used for email confirmation');
     return res.status(404).send(htmlMessage('Link no longer valid.'));
   }
 
   if (dayjs(now).isAfter(dayjs(activation.expires_at))) {
-    logger.warn('Expired token used for email confirmation');
+    logger.warn('Expired authentication used for email confirmation');
     return res.status(400).send(htmlMessage('Link has expired.'));
   }
 

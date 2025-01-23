@@ -55,7 +55,7 @@ export const createUserAction =
       created_at: now,
       expires_at: exp,
     });
-    logger.debug('Activation token created for new user (token redacted)');
+    logger.debug('Activation authentication created for new user');
     try {
       const verificationLink = `${envs.USE_SSL ? 'https' : 'http'}://${
         req.headers.host

@@ -1,4 +1,5 @@
 import { logger } from '#config/logger.js';
+import { gamesFeedEvents } from '#games/websockets/setup_games_feed.js';
 import { jsonRes } from '#utils/response.js';
 
 export const joinGameAction =
@@ -40,7 +41,7 @@ export const joinGameAction =
         connected_players: connectedPlayers,
       });
       activeGames.set(gameId, gameData);
-      websockets.emit('user_joined', {
+      websockets.emit(gamesFeedEvents.userJoined, {
         game_id: gameId,
         user_id: requestingUser.id,
       });

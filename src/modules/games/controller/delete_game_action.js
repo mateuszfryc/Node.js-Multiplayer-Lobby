@@ -1,4 +1,5 @@
 import { logger } from '#config/logger.js';
+import { gamesFeedEvents } from '#games/websockets/setup_games_feed.js';
 import { jsonRes } from '#utils/response.js';
 
 export const deleteGameAction =
@@ -27,7 +28,7 @@ export const deleteGameAction =
     }
     await database.game.delete(gameId);
     activeGames.delete(gameId);
-    websockets.emit('game_deleted', { id: gameId });
+    websockets.emit(gamesFeedEvents.gameDeleted, { id: gameId });
     const ownerUser = await database.user.findById(game.owner_id);
     const updatedHostedGames = ownerUser.hosted_games.filter(
       (g) => g !== gameId

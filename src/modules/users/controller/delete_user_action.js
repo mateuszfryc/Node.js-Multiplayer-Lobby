@@ -1,4 +1,5 @@
 import { logger } from '#config/logger.js';
+import { gamesFeedEvents } from '#games/websockets/setup_games_feed.js';
 import { jsonRes } from '#utils/response.js';
 
 export const deleteUserAction =
@@ -23,7 +24,7 @@ export const deleteUserAction =
       for (const gId of user.hosted_games) {
         await database.game.delete(gId);
         activeGames.delete(gId);
-        websockets.emit('game_deleted', { id: gId });
+        websockets.emit(gamesFeedEvents.gameDeleted, { id: gId });
       }
     }
     await database.user.delete(userId);

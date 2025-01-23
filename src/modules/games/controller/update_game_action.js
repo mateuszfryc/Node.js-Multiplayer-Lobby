@@ -1,4 +1,5 @@
 import { logger } from '#config/logger.js';
+import { gamesFeedEvents } from '#games/websockets/setup_games_feed.js';
 import { jsonRes } from '#utils/response.js';
 
 export const updateGameAction =
@@ -32,7 +33,7 @@ export const updateGameAction =
     logger.debug('Game updated in database');
     const updatedGame = await database.game.findById(gameId);
     activeGames.set(gameId, updatedGame.toJSON());
-    websockets.emit('game_update', updatedGame);
+    websockets.emit(gamesFeedEvents.gamesUpdate, updatedGame);
     logger.info('Game updated successfully');
     return jsonRes(res, '', updatedGame, 200);
   };

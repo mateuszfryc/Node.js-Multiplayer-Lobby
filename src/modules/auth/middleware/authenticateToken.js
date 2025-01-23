@@ -3,7 +3,7 @@ import { jsonRes } from '#utils/response.js';
 import jwt from 'jsonwebtoken';
 
 export const authenticateToken = (database) => async (req, res, next) => {
-  logger.info('Authenticating token for incoming request', {
+  logger.info('Authenticating request', {
     method: req.method,
     url: req.url,
     clientIp: req.ip,
@@ -17,7 +17,7 @@ export const authenticateToken = (database) => async (req, res, next) => {
 
   const accessToken = authHeader?.split(' ')[1];
   if (!accessToken) {
-    logger.warn('No access token found in Authorization header');
+    logger.warn('Invalid Authorization header');
     return jsonRes(res, 'Unauthorized', [], 401);
   }
   try {
@@ -29,15 +29,15 @@ export const authenticateToken = (database) => async (req, res, next) => {
       logger.warn('User not found in database', { userId: decodedUser.id });
       return jsonRes(res, 'Unauthorized', [], 401);
     }
-    logger.debug('Token decoded successfully', { role: decodedUser.role });
+    logger.debug('User decoded successfully', { role: decodedUser.role });
     req.body.requestingUser = decodedUser;
     next();
   } catch (e) {
     if (e.name === 'TokenExpiredError') {
-      logger.info('Token expired', { error: e.message });
+      logger.info('Authentication expired', { error: e.message });
     } //
     else {
-      logger.error('Failed to authenticate token', { error: e.message });
+      logger.error('Failed to authenticate', { error: e.message });
     }
     return jsonRes(res, 'Unauthorized', [], 401);
   }
