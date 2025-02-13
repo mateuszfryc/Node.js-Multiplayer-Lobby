@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 
 export const updateUserAction = (database) => async (req, res) => {
   const updateId = req.params.user_id;
+  const selfUpdate = updateId === 'update';
   const { requestingUser } = req.body;
 
   if (!requestingUser) {
@@ -19,7 +20,8 @@ export const updateUserAction = (database) => async (req, res) => {
 
   if (
     requestingUser.role !== 'admin' && // allow if request is made by admin
-    requestingUser.id !== updateId // disallow updating other users
+    requestingUser.id !== updateId && // disallow updating other users
+    !selfUpdate // allow to update self
   ) {
     logger.warn(
       'Unauthorized update request (no user id or mismatched user id)'
@@ -32,7 +34,7 @@ export const updateUserAction = (database) => async (req, res) => {
     logger.warn('Invalid player_name in update request');
     return jsonRes(res, 'Invalid player_name', [], 400);
   }
-  await database.user.update(updateId, {
+  await database.user.update(selfUpdate ? requestingUser.id : updateId, {
     player_name,
     updated_at: dayjs().toISOString(),
   });
