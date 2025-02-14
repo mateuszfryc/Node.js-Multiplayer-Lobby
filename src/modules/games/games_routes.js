@@ -13,33 +13,30 @@ import { updateGameAction } from './controller/update_game_action.js';
 export const gamesRoutes = (baseUrl, services) => {
   const router = express.Router();
   const gamesUrl = `${baseUrl}/games`;
-  const { database, activeGames, websockets, envs } = services;
+  const { database, websockets, envs } = services;
   const auth = authenticateToken(database);
 
   router
     .route(gamesUrl)
     .get(auth, bounds(getAllGamesAction(database)))
-    .post(
-      auth,
-      bounds(createGameAction(database, activeGames, websockets, envs))
-    );
+    .post(auth, bounds(createGameAction(database, websockets, envs)));
 
   router
     .route(`${gamesUrl}/:game_id`)
-    .put(auth, bounds(updateGameAction(database, activeGames, websockets)))
-    .delete(auth, bounds(deleteGameAction(database, activeGames, websockets)));
+    .put(auth, bounds(updateGameAction(database, websockets)))
+    .delete(auth, bounds(deleteGameAction(database, websockets)));
 
   router
     .route(`${gamesUrl}/:game_id/join`)
-    .post(auth, bounds(joinGameAction(database, activeGames, websockets)));
+    .post(auth, bounds(joinGameAction(database, websockets)));
 
   router
     .route(`${gamesUrl}/:game_id/leave`)
-    .post(auth, bounds(leaveGameAction(database, activeGames, websockets)));
+    .post(auth, bounds(leaveGameAction(database, websockets)));
 
   router
     .route(`${gamesUrl}/:game_id/heartbeat`)
-    .put(auth, bounds(gameHeartbeatAction(database, activeGames)));
+    .put(auth, bounds(gameHeartbeatAction(database)));
 
   return router;
 };

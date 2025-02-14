@@ -10,14 +10,14 @@ export const gamesFeedEvents = {
   useLeft: 'user_left',
 };
 
-export const setupGamesFeed = (database, activeGames) => (socket) => {
+export const setupGamesFeed = (database) => async (socket) => {
   logger.info('WebSocket connected', { socketId: socket.id });
 
   socket.on('error', (err) => {
     logger.error('WebSocket error', { error: err });
   });
-
+  const gamesList = await database.game.getCurrentGamesList();
   socket.on('subscribeToGamesList', () => {
-    socket.emit(gamesFeedEvents.gamesList, Array.from(activeGames.values()));
+    socket.emit(gamesFeedEvents.gamesList, gamesList);
   });
 };

@@ -23,6 +23,29 @@ export class GamesRepository {
     return this.model.findOne({ where: { id } });
   }
 
+  mapGameToGameListItem = (game) => ({
+    // client searching for games need ip and port to measure its own ping to the host
+    id: game.id,
+    ip: game.ip,
+    port: game.port,
+    ping: game.ping,
+    name: game.name,
+    map_name: game.map_name,
+    game_mode: game.game_mode,
+    connected_players: game.connected_players.length,
+    max_players: game.max_players,
+    private: game.private,
+    requires_password: game.password !== '',
+    last_host_action_at: game.last_host_action_at,
+    created_at: game.created_at,
+  });
+
+  async getCurrentGamesList() {
+    const games = await this.model.findAll();
+    if (games) return games.map((game) => this.mapGameToGameListItem(game));
+    return [];
+  }
+
   async create(
     ownerId,
     ip,

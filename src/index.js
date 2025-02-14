@@ -64,8 +64,7 @@ const database = new DatabaseManager(
   gamesSchema,
   activationsSchema
 );
-const activeGames = new Map();
-await database.init(database, envs, activeGames);
+await database.init(database, envs);
 const mailer = transporter(envs);
 const httpServer = createServer(app);
 const websockets = new SocketIOServer(httpServer, {
@@ -77,7 +76,6 @@ const services = {
   envs,
   mailer,
   websockets,
-  activeGames,
 };
 
 const baseUrl = '/api_v1';
@@ -93,16 +91,14 @@ app.use(errorBoundry);
 
 websockets.use(websocketsJwtAuth(envs));
 websockets.on('connection', (socket) => {
-  setupGamesFeed(database, activeGames)(socket);
+  setupGamesFeed(database)(socket);
   socket.on('host_heartbeat', async ({ game_id }) => {
     await database.games.refresh(game_id);
-    const updatedGame = await database.games.findById(game_id);
-    if (updatedGame) activeGames.set(game_id, updatedGame.toJSON());
   });
 });
 
 setInterval(
-  setupInactiveGamesCleanup(database, websockets, activeGames, envs),
+  setupInactiveGamesCleanup(database, websockets, envs),
   envs.GAME_HEARTBEAT_INTERVAL * 1000
 );
 

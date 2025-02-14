@@ -5,7 +5,7 @@ import { jsonRes } from '#utils/response.js';
 import { validateIpOrLocalhost, validatePort } from '#utils/validators.js';
 
 export const createGameAction =
-  (database, activeGames, websockets, envs) => async (req, res) => {
+  (database, websockets, envs) => async (req, res) => {
     const { requestingUser } = req.body;
     if (!requestingUser || !requestingUser.id) {
       logger.warn('Unauthorized attempt to create game');
@@ -59,7 +59,6 @@ export const createGameAction =
     if (existing) {
       logger.debug('Existing game found for IP:Port. Replacing game entry');
       await database.game.delete(existing.id);
-      activeGames.delete(existing.id);
     }
 
     const newGame = await database.game.create(
@@ -73,7 +72,6 @@ export const createGameAction =
       isPrivate,
       password
     );
-    activeGames.set(newGame.id, newGame.toJSON());
     websockets.emit(gamesFeedEvents.gameCreated, newGame);
     logger.info('Game created successfully', {
       game_name,

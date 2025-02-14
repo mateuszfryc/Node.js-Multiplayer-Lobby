@@ -37,7 +37,7 @@ export class DatabaseManager {
     );
   }
 
-  async init(database, envs, activeGames) {
+  async init(database, envs) {
     try {
       await this.sequelize.authenticate();
       logger.info('Database connection successful.');
@@ -80,9 +80,5 @@ export class DatabaseManager {
     }
 
     const games = await this.game.findAll();
-    // if before the server went down there where any active games push them into activeGames array
-    games.forEach((game) => {
-      activeGames.set(game.id, game.toJSON());
-    });
   }
 }

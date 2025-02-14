@@ -10,7 +10,7 @@ import { updateUserAction } from './controller/update_user_action.js';
 
 export const usersRoutes = (baseUrl, services) => {
   const router = express.Router();
-  const { database, envs, mailer, activeGames, websockets } = services;
+  const { database, envs, mailer, websockets } = services;
   const auth = authenticateToken(database);
 
   if (envs.ALLOW_USER_REGISTRATION) {
@@ -27,7 +27,7 @@ export const usersRoutes = (baseUrl, services) => {
     .route(`${baseUrl}/users/:user_id`)
     .get(auth, bounds(getUserAction(database)))
     .put(auth, bounds(updateUserAction(database)))
-    .delete(auth, bounds(deleteUserAction(database, activeGames, websockets)));
+    .delete(auth, bounds(deleteUserAction(database, websockets)));
 
   router
     .route(`${baseUrl}/users/verify/:token`)
