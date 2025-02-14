@@ -93,7 +93,7 @@ websockets.use(websocketsJwtAuth(envs));
 websockets.on('connection', (socket) => {
   setupGamesFeed(database)(socket);
   socket.on('host_heartbeat', async ({ game_id }) => {
-    await database.games.refresh(game_id);
+    await database.game.refresh(game_id);
   });
 });
 

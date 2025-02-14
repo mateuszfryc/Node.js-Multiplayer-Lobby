@@ -5,10 +5,15 @@ import tseslint from 'typescript-eslint';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
+  ...pluginJs.configs.recommended,
   {
     files: ['**/*.{js}'],
+    env: {
+      node: true,
+    },
     languageOptions: {
-      globals: globals.node,
+      sourceType: 'script',
+      ...globals.node,
     },
     settings: {
       'import/resolver': {
@@ -33,6 +38,5 @@ export default [
       import: pluginImport,
     },
   },
-  pluginJs.configs.recommended,
   ...tseslint.configs.recommended,
 ];
