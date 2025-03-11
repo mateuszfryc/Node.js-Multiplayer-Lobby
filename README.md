@@ -1,6 +1,6 @@
-# Node.js Lobby for Multiplayer Games (with Authentication)
+# Node.js Multiplayer Lobby
 
-Node.js Lobby for Multiplayer Games (NLMG) is a simple and secure Node.js server designed to manage player authentication, creating and joining games as well as Websocket based games feed of currently hosted games. The server is **game-agnostic**, it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits game requirements.
+Node.js Lobby for Multiplayer Games (NML) is a simple and secure Node.js server designed to manage player authentication, creating and joining games as well as Websocket based games feed of currently hosted games. The server is **game-agnostic**, it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits game requirements.
 
 ## Features
 
@@ -37,7 +37,7 @@ Node.js Lobby for Multiplayer Games (NLMG) is a simple and secure Node.js server
 - Real-time updates for hosted games status changes. Intended for players searching for games.
 - Socket.IO integration for game feed updates.
 
-## What NLMG doesn't do?
+## What NML doesn't do?
 
 - **Matchmaking:** This server is not intended to be used for matchmaking. It is designed to be a lobby server where players can create and search games.
 - **Join/Leave Management:** This server does not manage player joining or leaving games. It is up to the game host to manage this. There are optional REST endpoints for joining and leaving games, but they are not included in the intended flow.
