@@ -2,7 +2,7 @@
   Josh's Custom CSS Reset
   https://www.joshwcomeau.com/css/custom-css-reset/
 */
-export const cssReset = `
+const cssReset = `
   *, *::before, *::after {
     box-sizing: border-box;
   }
