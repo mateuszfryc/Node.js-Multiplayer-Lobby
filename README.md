@@ -1,6 +1,6 @@
 # Node.js Multiplayer Lobby
 
-Node.js Lobby for Multiplayer Games (NML) is a simple and secure Node.js server designed to manage player authentication, creating and joining games as well as Websocket based games feed of currently hosted games. The server is **game-agnostic**, it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits game requirements.
+Node.js Multiplayer Lobby (NML) is open source simple Node.js server designed to manage player authentication, creating and joining games as well as Websocket based games feed of currently hosted games. The server is **game-agnostic**, it can be integrated with any type of multiplayer game, providing a centralized hub for lobby management. It can be used as a base for more complex servers or as is if it fits game requirements.
 
 ## Features
 
